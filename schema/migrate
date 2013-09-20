@@ -1,0 +1,56 @@
+#!/bin/env python
+"""
+run this from the git repo, setup.py doesn't install it as a script
+
+usage:
+    ./schema/migrate <action> <migration> <user> <pass> <database> <shard>
+
+- action may be "recreate", "up" or "down"
+- migration is the name of the sql files to select (<migration>.up.sql and
+  <migration>.down.sql)
+- user is the database user
+- pass is the database password
+- database is the database name to use
+- shard is the shard number
+"""
+
+import os
+import sys
+
+import psycopg2
+
+
+def main(env, argv):
+    if len(argv) != 7:
+        sys.stderr.write("wrong number of arguments\n")
+        return 1
+
+    ex, forward, migration, user, pwd, dbname, shardnum = argv
+
+    if forward == 'recreate':
+      main(env, [ex, 'backward', migration, user, pwd, dbname, shardnum])
+      main(env, [ex, 'forward', migration, user, pwd, dbname, shardnum])
+      return 0
+
+    shardnum = int(shardnum)
+
+    # running this from the repo so we have the schema/ dir
+    # without having to do setuptools-based package data nonsense
+    here = os.path.dirname(os.path.abspath(__file__))
+
+    conn = psycopg2.connect(host='localhost', port=5432,
+			user=user, password=pwd, database=dbname)
+
+    with conn, open('%s/%s.%s.sql' %
+			(here, migration, forward), 'r') as fp:
+        cursor = conn.cursor()
+        cursor.execute(fp.read() % {
+            'start': max(shardnum << 56, 1),
+            'max': ((shardnum + 1) << 56) - 1,
+        })
+
+    return 0
+
+
+if __name__ == '__main__':
+    exit(main(os.environ, sys.argv))

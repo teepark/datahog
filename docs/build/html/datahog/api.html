@@ -1,0 +1,180 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>datahog.api – Functions for manipulating persisted data &mdash; datahog 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="datahog 0.0.1 documentation" href="../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../index.html">datahog 0.0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="module-datahog.api">
+<span id="datahog-api-functions-for-manipulating-persisted-data"></span><h1><a class="reference internal" href="#module-datahog.api" title="datahog.api"><tt class="xref py py-mod docutils literal"><span class="pre">datahog.api</span></tt></a> &#8211; Functions for manipulating persisted data<a class="headerlink" href="#module-datahog.api" title="Permalink to this headline">¶</a></h1>
+<dl class="function">
+<dt id="datahog.api.create_entity">
+<tt class="descclassname">datahog.api.</tt><tt class="descname">create_entity</tt><big>(</big><em>pool</em>, <em>ctx</em>, <em>flags=None</em><big>)</big><a class="headerlink" href="#datahog.api.create_entity" title="Permalink to this definition">¶</a></dt>
+<dd><p>store a new entity</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>pool</strong> (<em>ConnetionPool</em>) &#8211; a <a class="reference internal" href="dbconn.html#datahog.dbconn.ConnectionPool" title="datahog.dbconn.ConnectionPool"><tt class="xref py py-class docutils literal"><span class="pre">ConnectionPool</span></tt></a> to use for
+getting a database connection</li>
+<li><strong>ctx</strong> (<em>int</em>) &#8211; the context value for the entity</li>
+<li><strong>flags</strong> (<em>iterable</em>) &#8211; the flags to set on the new entity (default empty)</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">an entity dict, which contains <tt class="docutils literal"><span class="pre">guid</span></tt>, <tt class="docutils literal"><span class="pre">ctx</span></tt> and <tt class="docutils literal"><span class="pre">flags</span></tt> keys</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Raises:</th><td class="field-body"><ul class="first last simple">
+<li><strong>ReadOnly</strong> &#8211; if given a read-only pool</li>
+<li><strong>BadContext</strong> &#8211; if the <tt class="docutils literal"><span class="pre">ctx</span></tt> is not a registered context associated with table.ENTITY</li>
+<li><strong>BadFlag</strong> &#8211; if <tt class="docutils literal"><span class="pre">flags</span></tt> contains something that is not a registered flag associated
+with <tt class="docutils literal"><span class="pre">ctx</span></tt></li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="datahog.api.get_entity">
+<tt class="descclassname">datahog.api.</tt><tt class="descname">get_entity</tt><big>(</big><em>pool</em>, <em>guid</em>, <em>ctx</em><big>)</big><a class="headerlink" href="#datahog.api.get_entity" title="Permalink to this definition">¶</a></dt>
+<dd><p>retrieve a stored entity</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>pool</strong> (<em>ConnetionPool</em>) &#8211; a <a class="reference internal" href="dbconn.html#datahog.dbconn.ConnectionPool" title="datahog.dbconn.ConnectionPool"><tt class="xref py py-class docutils literal"><span class="pre">ConnectionPool</span></tt></a> to use for
+getting a database connection</li>
+<li><strong>guid</strong> (<em>int</em>) &#8211; the guid of the entity to pull</li>
+<li><strong>ctx</strong> (<em>int</em>) &#8211; the context of the entity</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">an entity dict (which contains <tt class="docutils literal"><span class="pre">guid</span></tt>, <tt class="docutils literal"><span class="pre">ctx</span></tt> and <tt class="docutils literal"><span class="pre">flags</span></tt> keys) or
+None if there exists no entity for the given <tt class="docutils literal"><span class="pre">guid/ctx</span></tt></p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="datahog.api.add_entity_flags">
+<tt class="descclassname">datahog.api.</tt><tt class="descname">add_entity_flags</tt><big>(</big><em>pool</em>, <em>guid</em>, <em>ctx</em>, <em>flags</em><big>)</big><a class="headerlink" href="#datahog.api.add_entity_flags" title="Permalink to this definition">¶</a></dt>
+<dd><p>apply flags to a stored entity</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>pool</strong> (<em>ConnetionPool</em>) &#8211; a <a class="reference internal" href="dbconn.html#datahog.dbconn.ConnectionPool" title="datahog.dbconn.ConnectionPool"><tt class="xref py py-class docutils literal"><span class="pre">ConnectionPool</span></tt></a> to use for
+getting a database connection</li>
+<li><strong>guid</strong> (<em>int</em>) &#8211; the guid of the entity</li>
+<li><strong>ctx</strong> (<em>int</em>) &#8211; the entity&#8217;s context</li>
+<li><strong>flags</strong> (<em>iterable</em>) &#8211; the flags to add</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">the new integer flag value, or None if there is no entity for the
+given <tt class="docutils literal"><span class="pre">guid/ctx</span></tt></p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name" colspan="2">Raises ReadOnly:</th></tr>
+<tr class="field-odd field"><td>&nbsp;</td><td class="field-body"><p class="first last">if given a readonly ConnectionPool</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="../_sources/datahog/api.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../index.html">datahog 0.0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, Travis J Parker.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2b1.
+    </div>
+  </body>
+</html>

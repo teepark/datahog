@@ -1,0 +1,8 @@
+.*.swp
+.*.swo
+*.pyc
+*.pyo
+datahog.egg-info/*
+MANIFEST.in
+build/*
+dist/*
