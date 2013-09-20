@@ -6,8 +6,10 @@ import contextlib
 import hashlib
 import random
 import sys
+import time
 
 import psycopg2
+import psycopg2.extensions
 
 from . import error, query
 from .const import table, util
@@ -107,22 +109,52 @@ class TwoPhaseCommit(object):
                 self.commit()
 
 
+class Timer(object):
+    def __init__(self, pool, timeout, conn):
+        self.pool = pool
+        self.timeout = timeout
+        self.conn = conn
+
+    def __enter__(self):
+        self.t = self.pool._timer(self.timeout, self.ding)
+        self.t.start()
+        return self
+
+    def __exit__(self, klass=None, exc=None, tb=None):
+        if klass is psycopg2.extensions.QueryCanceledError:
+            raise error.Timeout()
+        self.t.cancel()
+
+    def ding(self):
+        if self.conn is not None:
+            self.conn.cancel()
+
+
 def set_property(conn, base_id, ctx, value, flags):
     cursor = conn.cursor()
     try:
-        return query.upsert_property(cursor, base_id, ctx, value, flags)
+        result = query.upsert_property(cursor, base_id, ctx, value, flags)
+        conn.commit()
+        return result
 
     except psycopg2.IntegrityError:
         conn.rollback()
         updated = query.update_property(cursor, base_id, ctx, value, flags)
+        conn.commit()
         return False, bool(updated)
 
-    finally:
-        conn.commit()
 
+def lookup_alias(pool, digest, ctx, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _lookup_alias(pool, digest, ctx, timer)
+    with timer:
+        return _lookup_alias(pool, digest, ctx, timer)
 
-def lookup_alias(pool, digest, ctx):
-    for conn in pool.get_for_alias_hash(digest):
+def _lookup_alias(pool, digest, ctx, timer):
+    for shard in pool.shards_for_alias_hash(digest):
+        conn = pool.get_by_shard(shard, replace=False)
+        timer.conn = conn
         try:
             alias = query.select_alias_lookup(conn.cursor(), digest, ctx)
             if alias is not None:
@@ -135,7 +167,15 @@ def lookup_alias(pool, digest, ctx):
     return None
 
 
-def set_alias(pool, base_id, ctx, alias, flags):
+def set_alias(pool, base_id, ctx, alias, flags, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _set_alias(pool, base_id, ctx, alias, flags, timer)
+    with timer:
+        return _set_alias(pool, base_id, ctx, alias, flags, timer)
+        
+
+def _set_alias(pool, base_id, ctx, alias, flags, timer):
     digest = hashlib.sha1(alias).digest()
     digest_b64 = digest.encode('base64').strip()
 
@@ -147,8 +187,10 @@ def set_alias(pool, base_id, ctx, alias, flags):
             continue
 
         with pool.get_by_shard(shard) as conn:
+            timer.conn = conn
             owner = query.select_alias_lookup(conn.cursor(), digest, ctx)
         del conn
+        timer.conn = None
 
         if owner is not None:
             break
@@ -163,6 +205,7 @@ def set_alias(pool, base_id, ctx, alias, flags):
             (base_id, ctx, digest_b64))
     try:
         with tpc as conn:
+            timer.conn = conn
             inserted, owner_id = query.maybe_insert_alias_lookup(
                     conn.cursor(), digest, ctx, base_id, flags)
 
@@ -186,9 +229,11 @@ def set_alias(pool, base_id, ctx, alias, flags):
 
     finally:
         pool.put(conn)
+        timer.conn = None
 
     with tpc.elsewhere():
         with pool.get_by_guid(base_id) as conn:
+            timer.conn = conn
             if not query.insert_alias(
                     conn.cursor(), base_id, ctx, alias, flags):
                 conn.rollback()
@@ -201,12 +246,20 @@ def set_alias(pool, base_id, ctx, alias, flags):
     return True
 
 
-def add_alias_flags(pool, base_id, ctx, alias, flags):
+def add_alias_flags(pool, base_id, ctx, alias, flags, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _add_alias_flags(pool, base_id, ctx, alias, flags, timer)
+    with timer:
+        return _add_alias_flags(pool, base_id, ctx, alias, flags, timer)
+
+def _add_alias_flags(pool, base_id, ctx, alias, flags, timer):
     digest = hashlib.sha1(alias).digest()
     digest_b64 = digest.encode('base64').strip()
 
     for shard in pool.shards_for_alias_hash(digest):
         with pool.get_by_shard(shard) as conn:
+            timer.conn = conn
             owner = query.select_alias_lookup(conn.cursor(), digest, ctx)
 
             if owner is None:
@@ -224,6 +277,7 @@ def add_alias_flags(pool, base_id, ctx, alias, flags):
             (base_id, ctx, digest_b64, flags))
     try:
         with tpc as conn:
+            timer.conn = conn
             cursor = conn.cursor()
             result = query.add_flags(cursor, 'alias_lookup', flags,
                     {'hash': digest, 'ctx': ctx})
@@ -237,6 +291,7 @@ def add_alias_flags(pool, base_id, ctx, alias, flags):
 
     with tpc.elsewhere():
         with pool.get_by_guid(base_id) as conn:
+            timer.conn = conn
             result = query.add_flags(conn.cursor(), 'alias', flags,
                     {'base_id': base_id, 'ctx': ctx, 'value': alias})
             if not result or result[0] != result_flags:
@@ -247,12 +302,20 @@ def add_alias_flags(pool, base_id, ctx, alias, flags):
     return result_flags
 
 
-def clear_alias_flags(pool, base_id, ctx, alias, flags):
+def clear_alias_flags(pool, base_id, ctx, alias, flags, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _clear_alias_flags(pool, base_id, ctx, alias, flags, timer)
+    with timer:
+        return _clear_alias_flags(pool, base_id, ctx, alias, flags, timer)
+
+def _clear_alias_flags(pool, base_id, ctx, alias, flags, timer):
     digest = hashlib.sha1(alias).digest()
     digest_b64 = digest.encode('base64').strip()
 
     for shard in pool.shards_for_alias_hash(digest):
         with pool.get_by_shard(shard) as conn:
+            timer.conn = conn
             owner = query.select_alias_lookup(conn.cursor(), digest, ctx)
 
             if owner is None:
@@ -270,6 +333,7 @@ def clear_alias_flags(pool, base_id, ctx, alias, flags):
             (base_id, ctx, digest_b64, flags))
     try:
         with tpc as conn:
+            timer.conn = conn
             cursor = conn.cursor()
             result = query.clear_flags(cursor, 'alias_lookup', flags,
                     {'hash': digest, 'ctx': ctx})
@@ -283,6 +347,7 @@ def clear_alias_flags(pool, base_id, ctx, alias, flags):
 
     with tpc.elsewhere():
         with pool.get_by_guid(base_id) as conn:
+            timer.conn = conn
             result = query.clear_flags(conn.cursor(), 'alias', flags,
                     {'base_id': base_id, 'ctx': ctx})
             if not result or result[0] != result_flags:
@@ -293,12 +358,20 @@ def clear_alias_flags(pool, base_id, ctx, alias, flags):
     return result_flags
 
 
-def remove_alias(pool, base_id, ctx, alias):
+def remove_alias(pool, base_id, ctx, alias, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _remove_alias(pool, base_id, ctx, alias, timer)
+    with timer:
+        return _remove_alias(pool, base_id, ctx, alias, timer)
+
+def _remove_alias(pool, base_id, ctx, alias, timer):
     digest = hashlib.sha1(alias).digest()
     digest_b64 = digest.encode('base64').strip()
 
     for shard in pool.shards_for_alias_hash(digest):
         with pool.get_by_shard(shard) as conn:
+            timer.conn = conn
             owner = query.select_alias_lookup(conn.cursor(), digest, ctx)
 
             if owner is None:
@@ -316,6 +389,7 @@ def remove_alias(pool, base_id, ctx, alias):
             pool, lookup_shard, 'remove_alias', (base_id, ctx, digest_b64))
     try:
         with tpc as conn:
+            timer.conn = conn
             cursor = conn.cursor()
             if not query.remove_alias_lookup(cursor, digest, ctx, base_id):
                 tpc.fail()
@@ -325,6 +399,7 @@ def remove_alias(pool, base_id, ctx, alias):
 
     with tpc.elsewhere():
         with pool.get_by_guid(base_id) as conn:
+            timer.conn = conn
             if not query.remove_alias(conn.cursor(), base_id, ctx, alias):
                 conn.rollback()
                 tpc.fail()
@@ -333,11 +408,21 @@ def remove_alias(pool, base_id, ctx, alias):
     return True
 
 
-def create_relationship_pair(pool, base_id, rel_id, ctx, flags):
+def create_relationship_pair(pool, base_id, rel_id, ctx, flags, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _create_relationship_pair(
+                pool, base_id, rel_id, ctx, flags, timer)
+    with timer:
+        return _create_relationship_pair(
+                pool, base_id, rel_id, ctx, flags, timer)
+
+def _create_relationship_pair(pool, base_id, rel_id, ctx, flags, timer):
     tpc = TwoPhaseCommit(pool, conns.shard_by_guid(base_id),
             'create_relationship_pair', (base_id, rel_id, ctx))
     try:
         with tpc as conn:
+            timer.conn = conn
             inserted = query.insert_relationship(
                     conn.cursor(), base_id, rel_id, ctx, True, flags)
             if not inserted:
@@ -357,6 +442,7 @@ def create_relationship_pair(pool, base_id, rel_id, ctx, flags):
     try:
         with tpc.elsewhere():
             with pool.get_by_guid(rel_id) as conn:
+                timer.conn = conn
                 inserted = query.insert_relationship(
                         conn.cursor(), base_id, rel_id, ctx, False, flags)
                 if not inserted:
@@ -373,11 +459,21 @@ def create_relationship_pair(pool, base_id, rel_id, ctx, flags):
     return True
 
 
-def add_relationship_flags(pool, base_id, rel_id, ctx, flags):
+def add_relationship_flags(pool, base_id, rel_id, ctx, flags, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _add_relationship_flags(
+                pool, base_id, rel_id, ctx, flags, timer)
+    with timer:
+        return _add_relationship_flags(
+                pool, base_id, rel_id, ctx, flags, timer)
+
+def _add_relationship_flags(pool, base_id, rel_id, ctx, flags, timer):
     tpc = TwoPhaseCommit(pool, conns.shard_by_guid(base_id),
             'add_relationship_flags', (base_id, rel_id, ctx, flags))
     try:
         with tpc as conn:
+            timer.conn = conn
             result = query.add_flags(conn.cursor(), 'relationship', flags,
                     {'base_id': base_id, 'rel_id': rel_id, 'ctx': ctx,
                         'forward': True})
@@ -392,6 +488,7 @@ def add_relationship_flags(pool, base_id, rel_id, ctx, flags):
 
     with tpc.elsewhere():
         with pool.get_by_guid(rel_id) as conn:
+            timer.conn = conn
             result = query.add_flags(conn.cursor(), 'relationship', flags,
                     {'base_id': base_id, 'rel_id': rel_id, 'ctx': ctx,
                         'forward': False})
@@ -403,11 +500,21 @@ def add_relationship_flags(pool, base_id, rel_id, ctx, flags):
     return result_flags
 
 
-def clear_relationship_flags(pool, base_id, rel_id, ctx, flags):
+def clear_relationship_flags(pool, base_id, rel_id, ctx, flags, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _clear_relationship_flags(
+                pool, base_id, rel_id, ctx, flags, timer)
+    with timer:
+        return _clear_relationship_flags(
+                pool, base_id, rel_id, ctx, flags, timer)
+
+def _clear_relationship_flags(pool, base_id, rel_id, ctx, flags, timer):
     tpc = TwoPhaseCommit(pool, conns.shard_by_guid(base_id),
             'clear_relationship_flags', (base_id, rel_id, ctx, flags))
     try:
         with tpc as conn:
+            timer.conn = conn
             result = query.clear_flags(conn.cursor(), 'relationship', flags,
                     {'base_id': base_id, 'rel_id': rel_id, 'ctx': ctx,
                         'forward': True})
@@ -422,6 +529,7 @@ def clear_relationship_flags(pool, base_id, rel_id, ctx, flags):
 
     with tpc.elsewhere():
         with pool.get_by_guid(rel_id) as conn:
+            timer.conn = conn
             result = query.clear_flags(conn.cursor(), 'relationship', flags,
                     {'base_id': base_id, 'rel_id': rel_id, 'ctx': ctx,
                         'forward': False})
@@ -433,11 +541,19 @@ def clear_relationship_flags(pool, base_id, rel_id, ctx, flags):
     return result_flags
 
 
-def remove_relationship_pair(pool, base_id, rel_id, ctx):
+def remove_relationship_pair(pool, base_id, rel_id, ctx, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _remove_relationship_pair(pool, base_id, rel_id, ctx, timer)
+    with timer:
+        return _remove_relationship_pair(pool, base_id, rel_id, ctx, timer)
+
+def _remove_relationship_pair(pool, base_id, rel_id, ctx, timer):
     tpc = TwoPhaseCommit(pool, conns.shard_by_guid(base_id),
             'remove_relationship_pair', (base_id, rel_id, ctx))
     try:
         with tpc as conn:
+            timer.conn = conn
             if not query.remove_relationship(
                     conn.cursor(), base_id, rel_id, ctx, True):
                 tpc.fail()
@@ -447,6 +563,7 @@ def remove_relationship_pair(pool, base_id, rel_id, ctx):
 
     with tpc.elsewhere():
         with pool.get_by_guid(rel_id) as conn:
+            timer.conn = conn
             if not query.remove_relationship(
                     conn.cursor(), base_id, rel_id, ctx, False):
                 conn.rollback()
@@ -497,12 +614,20 @@ def _remove_guids_phase3(
         query.remove_relationships_multi(cursor, rels)
 
 
-def remove_entity(pool, guid, ctx):
+def remove_entity(pool, guid, ctx, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _remove_entity(pool, guid, ctx, timer)
+    with timer:
+        return _remove_entity(pool, buid, ctx, timer)
+
+def _remove_entity(pool, guid, ctx, timer):
     shard = pool.shard_by_guid(guid)
     tpc_base = TwoPhaseCommit(pool, shard, 'remove_entity_base', (guid,))
     conn = None
     try:
         with tpc_base as conn:
+            timer.conn = conn
             cursor = conn.cursor()
 
             if not query.remove_entity(cursor, guid, ctx):
@@ -520,6 +645,7 @@ def remove_entity(pool, guid, ctx):
             pool.put(conn)
 
     del conn, cursor
+    timer.conn = None
 
     with tpc_base.elsewhere():
         foreign_tpcs = []
@@ -560,12 +686,20 @@ def remove_entity(pool, guid, ctx):
     return True
 
 
-def remove_tree_node(pool, guid, ctx, base_id):
+def remove_tree_node(pool, guid, ctx, base_id, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _remove_tree_node(pool, guid, ctx, base_id, timer)
+    with timer:
+        return _remove_tree_node(pool, guid, ctx, base_id, timer)
+
+def _remove_tree_node(pool, guid, ctx, base_id, timer):
     shard = pool.shard_by_guid(guid)
     tpc_base = TwoPhaseCommit(pool, shard, 'remove_tree_node_base', (guid,))
     conn = None
     try:
         with tpc_base as conn:
+            timer.conn = conn
             cursor = conn.cursor()
 
             if not query.remove_tree_node(cursor, guid, ctx, base_id):
@@ -582,6 +716,7 @@ def remove_tree_node(pool, guid, ctx, base_id):
             pool.put(conn)
 
     del conn, cursor
+    timer.conn = None
 
     with tpc_base.elsewhere():
         foreign_tpcs = []

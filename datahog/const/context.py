@@ -21,7 +21,7 @@ STORAGE_TYPES = frozenset([
 ])
 
 
-def set_context(title, value, table, meta=None):
+def set_context(title, value, tbl, meta=None):
     '''create a constant for use in 'ctx'
 
     :param str title:
@@ -30,7 +30,7 @@ def set_context(title, value, table, meta=None):
 
     :param int value: the integer value to place in the 'ctx' column
 
-    :param int table:
+    :param int tbl:
         the table for which this context applies (must be a table from
         datahog.const.table)
 
@@ -41,19 +41,19 @@ def set_context(title, value, table, meta=None):
 
             base_ctx
                 the context value of the object to which it is related through
-                its ``base_id``. applies when ``table`` is ``table.TREENODE``,
+                its ``base_id``. applies when ``tbl`` is ``table.TREENODE``,
                 ``table.PROPERTY``, ``table.ALIAS``, or
                 ``table.RELATIONSHIP``.
 
             rel_ctx
                 the context value of the object to which it is related through
-                its ``rel_id``. applies when ``table`` is
+                its ``rel_id``. applies when ``tbl`` is
                 ``table.RELATIONSHIP``.
 
             storage
                 defines behavior of the int/str storage columns. must be one of
                 ``STORAGE_NULL``, ``STORAGE_INT``, ``STORAGE_STR``,
-                ``STORAGE_SER``. applies when ``table`` is ``table.PROPERTY``
+                ``STORAGE_SER``. applies when ``tbl`` is ``table.PROPERTY``
                 or ``table.TREENODE``.
     '''
     if title in globals():
@@ -63,8 +63,8 @@ def set_context(title, value, table, meta=None):
         raise ValueError("duplicate context values: %s, %s" %
                 (META[value][0], title))
 
-    if table not in table.REVERSE:
-        raise ValueError("unrecognized table const: %r" % table)
+    if tbl not in table.REVERSE:
+        raise ValueError("unrecognized table const: %r" % tbl)
 
     if meta:
         for rel in ('base', 'rel'):
@@ -80,4 +80,4 @@ def set_context(title, value, table, meta=None):
             raise ValueError("unrecognized storage type: %d" % meta['storage'])
 
     globals()[title] = value
-    META[value] = (title, table, meta)
+    META[value] = (title, tbl, meta)

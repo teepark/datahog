@@ -2,6 +2,7 @@
 
 import contextlib
 import Queue
+import random
 import threading
 import time
 
@@ -57,7 +58,7 @@ class ConnectionPool(object):
     :param bool readonly:
         Whether to disallow data-modifying methods against this connection
         pool. Can be useful for querying replication slaves to take some read
-        load off of the masters.
+        load off of the masters (default ``False``).
     '''
 
     def __init__(self, dbconf, readonly=False):
@@ -133,38 +134,54 @@ class ConnectionPool(object):
         if shard not in self._conns:
             raise error.NoShard(shard)
 
+        if timeout is not None:
+            deadline = time.time() + timeout
+
         try:
             conn = self._conns[shard].get(timeout)
         except Queue.Empty:
             raise error.Timeout()
 
+        if timeout is not None:
+            timeout = deadline - time.time()
+
         self._out[id(conn)] = shard
 
         if replace:
-            return self._replacement_context(conn)
+            if timeout is not None:
+                conn = self._timeout_context(conn, timeout)
+            conn = self._replacement_context(conn)
+
         return conn
 
     def get_by_guid(self, guid, replace=True, timeout=None):
         return self.get_by_shard(self.shard_by_guid(guid), replace, timeout)
 
-    def get_for_alias_hash(self, digest, timeout=None):
-        for shard in self.shards_for_alias_hash(digest):
-            yield self.get_by_shard(shard, False, timeout)
-
-    def get_for_alias_write(self, digest, replace=True, timeout=None):
-        return self.get_by_shard(
-                self.shard_for_alias_write(digest), replace, timeout)
-
     def get_random(self, replace=True, timeout=None):
         return self.get_by_shard(self.random_shard(), replace, timeout)
+
+    _timer = threading.Timer
 
     @contextlib.contextmanager
     def _replacement_context(self, conn):
         try:
+            with conn as c:
+                yield c
+        finally:
+            self.put(c)
+
+    @contextlib.contextmanager
+    def _timeout_context(self, conn, timeout):
+        t = self._timer(timeout, conn.cancel)
+        t.start()
+        try:
             with conn:
                 yield conn
-        finally:
-            dbconn.put(conn)
+        except psycopg2.extensions.QueryCanceledError:
+            conn.reset()
+            raise error.Timeout()
+        else:
+            t.cancel()
 
     def _start_conn(self, shard, done):
         @self._background
@@ -214,3 +231,5 @@ if greenhouse:
         def start(self):
             psycopg2.extensions.set_wait_callback(greenpsycopg2.wait_callback)
             super(GreenhouseConnPool, self).start()
+
+        _timer = greenhouse.Timer
