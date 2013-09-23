@@ -659,6 +659,20 @@ def create_tree_node(pool, base_id, ctx, value, flags, timeout):
 
 
 def move_tree_node(pool, node_id, ctx, base_id, new_base_id, timeout):
+    if pool.shard_by_guid(base_id) == pool.shard_by_guid(new_base_id):
+        with pool.get_by_guid(base_id, timeout=timeout) as conn:
+            cursor = conn.cursor()
+            if not query.remove_tree_edge(cursor, base_id, ctx, node_id):
+                return False
+
+            base_ctx = util.ctx_base_ctx(ctx)
+            if not query.insert_tree_edge(
+                    cursor, new_base_id, ctx, node_id, base_ctx):
+                conn.rollback()
+                return False
+
+        return True
+
     timer = Timer(pool, timeout, None)
     if timeout is None:
         return _move_tree_node(pool, node_id, ctx, base_id, new_base_id, timer)
