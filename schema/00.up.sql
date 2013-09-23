@@ -86,7 +86,6 @@ create table tree_node (
   guid bigint not null default nextval('guids'),
   flags smallint default 0 not null,
   time_removed timestamp default null,
-  base_id bigint not null,
   ctx smallint not null,
   num bigint default null,
   value text default null,
@@ -97,6 +96,13 @@ create unique index treenode_guid on tree_node (
   guid
 ) where time_removed is null;
 
-create index treenode_idx on tree_node (
+create table tree_edge (
+  base_id bigint not null,
+  time_removed timestamp default null,
+  ctx smallint not null,
+  child_id bigint not null
+);
+
+create index tree_edge_idx on tree_edge (
   base_id, ctx
 ) where time_removed is null;

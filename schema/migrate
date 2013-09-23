@@ -28,9 +28,9 @@ def main(env, argv):
     ex, forward, migration, user, pwd, dbname, shardnum = argv
 
     if forward == 'recreate':
-      main(env, [ex, 'backward', migration, user, pwd, dbname, shardnum])
-      main(env, [ex, 'forward', migration, user, pwd, dbname, shardnum])
-      return 0
+        main(env, [ex, 'down', migration, user, pwd, dbname, shardnum])
+        main(env, [ex, 'up', migration, user, pwd, dbname, shardnum])
+        return 0
 
     shardnum = int(shardnum)
 

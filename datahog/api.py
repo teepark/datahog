@@ -19,8 +19,9 @@ __all__ = ['create_entity', 'get_entity', 'add_entity_flags',
         'create_relationship', 'list_relationships', 'get_relationship',
         'add_relationship_flags', 'clear_relationship_flags',
         'remove_relationship', 'create_tree_node', 'get_tree_node',
-        'list_tree_children', 'update_tree_node', 'increment_tree_node',
-        'add_tree_node_flags', 'clear_tree_node_flags', 'remove_tree_node']
+        'list_tree_children', 'get_tree_children', 'update_tree_node',
+        'increment_tree_node', 'add_tree_node_flags', 'clear_tree_node_flags',
+        'move_tree_node', 'remove_tree_node']
 
 
 _missing = object()
@@ -807,7 +808,7 @@ def create_relationship(pool, ctx, base_id, rel_id, flags=None, timeout=None):
             or util.ctx_rel_ctx(ctx) is None):
         raise error.BadContext(ctx)
 
-    flags = util.flags_to_int(ctx, flags)
+    flags = util.flags_to_int(ctx, flags or [])
 
     return txn.create_relationship_pair(
             pool, base_id, rel_id, ctx, flags, timeout)
@@ -1021,8 +1022,8 @@ def create_tree_node(pool, base_id, ctx, value, flags=None, timeout=None):
         of ``None`` means no limit
 
     :returns:
-        a tree_node dict, containing ``guid``, ``base_id``, ``ctx``, ``value``,
-        and ``flags`` keys
+        a tree_node dict, containing ``guid``, ``ctx``, ``value``, and
+        ``flags`` keys
 
     :raises ReadOnly: if the provided pool is read-only
 
@@ -1047,9 +1048,7 @@ def create_tree_node(pool, base_id, ctx, value, flags=None, timeout=None):
     flagsint = util.flags_to_int(ctx, flags)
     value = _storage_wrap(ctx, value)
 
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
-        node = query.insert_tree_node(
-                conn.cursor(), base_id, ctx, value, flagsint)
+    node = txn.create_tree_node(pool, base_id, ctx, value, flagsint, timeout)
 
     if node is None:
         base_tbl = table.NAMES[util.ctx_tbl(base_ctx)]
@@ -1076,8 +1075,8 @@ def get_tree_node(pool, node_id, ctx, timeout=None):
         of ``None`` means no limit
 
     :returns:
-        a node dict (contains ``guid``, ``base_id``, ``ctx``, ``value``, and
-        ``flags`` keys), or ``None`` if there is no such tree node
+        a node dict (contains ``guid``, ``ctx``, ``value``, and ``flags``
+        keys), or ``None`` if there is no such tree node
 
     :raises BadContext:
         if ``ctx`` isn't a registered context for ``table.TREENODE``, or
@@ -1095,13 +1094,59 @@ def get_tree_node(pool, node_id, ctx, timeout=None):
         return None
 
     node['flags'] = util.int_to_flags(ctx, node['flags'])
-    node['value'] = _storage_unwrap(ctx, value)
+    node['value'] = _storage_unwrap(ctx, node['value'])
 
     return node
 
 
+def get_tree_nodes(pool, nid_ctx_pairs, timeout=None):
+    '''fetch a list of tree nodes
+
+    :param ConnectionPool pool:
+        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
+        getting a database connection
+
+    :param list nid_ctx_pairs:
+        list of ``(guid, ctx)`` tuples describing the nodes to fetch
+
+    :param timeout:
+        maximum time in seconds that the method is allowed to take; the default
+        of ``None`` means no limit
+
+    :returns:
+        a list of node dicts containing ``guid``, ``ctx``, ``value`` and
+        ``flags`` keys. any ``(guid, ctx)`` pairs from ``nid_ctx_pairs`` for
+        which no node could be found, a None will be in that position in the
+        results list
+    '''
+    order = {nid: i for i, (nid, ctx) in enumerate(nid_ctx_pairs)}
+    groups = {}
+    for nid, ctx in nid_ctx_pairs:
+        groups.setdefault(pool.shard_by_guid(nid), []).append((nid, ctx))
+
+    if timeout is not None:
+        deadline = time.time() + timeout
+
+    nodes = []
+    for shard, group in groups.iteritems():
+        with pool.get_by_shard(shard, timeout=timeout) as conn:
+            nodes.extend(
+                    query.select_tree_nodes(conn.cursor(), group))
+
+        if timeout is not None:
+            timeout = deadline - time.time()
+
+    results = [None] * len(nid_ctx_pairs)
+    for node in nodes:
+        node['flags'] = util.int_to_flags(node['ctx'], node['flags'])
+        node['value'] = _storage_unwrap(node['ctx'], node['value'])
+        results[order[node['guid']]] = node
+
+    return results
+
+
 def list_tree_children(pool, base_id, ctx, timeout=None):
-    '''list the tree nodes under a guid object
+    '''list the tree nodes' guids under a common parent
 
     :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
@@ -1116,8 +1161,7 @@ def list_tree_children(pool, base_id, ctx, timeout=None):
         of ``None`` means no limit
 
     :returns:
-        a list of node dicts, which contain ``guid``, ``base_id``, ``ctx``,
-        ``value``, and ``flags`` keys
+        a list of ints of the guids of the tree nodes
 
     :raises BadContext:
         if ``ctx`` isn't a registered context for ``table.TREENODE``, or
@@ -1129,13 +1173,45 @@ def list_tree_children(pool, base_id, ctx, timeout=None):
         raise error.BadContext(ctx)
 
     with pool.get_by_guid(base_id, timeout=timeout) as conn:
-        results = query.select_tree_nodes(conn.cursor(), base_id, ctx)
+        results = query.select_tree_node_guids(conn.cursor(), base_id, ctx)
 
-    for result in results:
-        result['flags'] = util.int_to_flags(ctx, result['flags'])
-        result['value'] = _storage_unwrap(ctx, result['value'])
+    return [pair[0] for pair in results]
 
-    return results
+
+def get_tree_children(pool, base_id, ctx, timeout=None):
+    '''fetch the tree nodes under a common parent
+
+    :param ConnectionPool pool:
+        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
+        getting a database connection
+
+    :param int base_id: the guid of the parent object
+
+    :param int ctx: context of the nodes
+
+    :param timeout:
+        maximum time in seconds that the method is allowed to take; the default
+        of ``None`` means no limit
+
+    :returns:
+        a list of tree node dicts, each containing ``guid``, ``ctx``, ``value``
+        and ``flags`` keys
+
+    :raises BadContext:
+        if ``ctx`` isn't a registered context for ``table.TREENODE``, or
+        doesn't have both a ``base_ctx`` and ``storage`` configured
+    '''
+    if timeout is not None:
+        deadline = time.time() + timeout
+
+    nids = list_tree_children(pool, base_id, ctx, timeout)
+
+    if timeout is not None:
+        timeout = deadline - time.time()
+
+    nodes = get_tree_nodes(pool, [(nid, ctx) for nid in nids], timeout)
+
+    return [node for node in nodes if node is not None]
 
 
 def update_tree_node(
@@ -1330,6 +1406,19 @@ def clear_tree_node_flags(pool, node_id, ctx, flags, timeout=None):
         return None
 
     return util.int_to_flags(ctx, result[0])
+
+
+def move_tree_node(pool, node_id, ctx, base_id, new_base_id, timeout=None):
+    '''
+    '''
+    if pool.readonly:
+        raise error.ReadOnly()
+
+    if util.ctx_tbl(ctx) != table.TREENODE:
+        raise error.BadContext(ctx)
+
+    return txn.move_tree_node(
+            pool, node_id, ctx, base_id, new_base_id, timeout)
 
 
 def remove_tree_node(pool, node_id, ctx, base_id, timeout=None):

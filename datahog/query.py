@@ -425,13 +425,28 @@ where
 
 def remove_relationships_multiple_bases(cursor, base_ids):
     cursor.execute("""
-update relationship
-set time_removed=now()
-where
-    time_removed is null
-    and base_id in (%s)
-returning base_id, ctx, forward, rel_id
-""" % (','.join('%s' for x in base_ids),), base_ids)
+with forwardrels (base_id, ctx, forward, rel_id) as (
+    update relationship
+    set time_removed=now()
+    where
+        time_removed is null
+        and forward=true
+        and base_id in (%s)
+    returning base_id, ctx, forward, rel_id
+),
+backwardrels (base_id, ctx, forward, rel_id) as (
+    update relationship
+    set time_removed=now()
+    where
+        time_removed is null
+        and forward=false
+        and rel_id in (%s)
+    returning base_id, ctx, forward, rel_id
+)
+select base_id, ctx, forward, rel_id from forwardrels
+UNION ALL
+select base_id, ctx, forward, rel_id from backwardrels
+""" % ((','.join('%s' for x in base_ids),) * 2), base_ids * 2)
 
     return cursor.fetchall()
 
@@ -459,8 +474,8 @@ def insert_tree_node(cursor, base_id, ctx, value, flags):
     base_tbl = table.NAMES[base_tbl]
 
     cursor.execute("""
-insert into tree_node (base_id, ctx, %s, flags)
-select %%s, %%s, %%s, %%s
+insert into tree_node (ctx, %s, flags)
+select %%s, %%s, %%s
 where exists (
     select 1
     from %s
@@ -470,45 +485,92 @@ where exists (
         and ctx=%%s
 )
 returning guid
-""" % (val_field, base_tbl), (base_id, ctx, value, flags, base_id, base_ctx))
+""" % (val_field, base_tbl), (ctx, value, flags, base_id, base_ctx))
 
     if not cursor.rowcount:
         return None
 
     return {
         'guid': cursor.fetchone()[0],
-        'base_id': base_id,
         'ctx': ctx,
         'flags': flags,
         'value': value,
     }
 
 
-def select_tree_node(cursor, nid, ctx):
+def insert_tree_edge(cursor, base_id, ctx, child_id, base_ctx=None):
+    if base_ctx is None:
+        where = ''
+        params = (base_id, ctx, child_id)
+    else:
+        base_tbl = table.NAMES[util.ctx_tbl(base_ctx)]
+        where = '''where exists (
+    select 1 from %s
+    where
+        time_removed is null
+        and guid=%%s
+        and ctx=%%s
+)''' % (base_tbl,)
+        params = (base_id, ctx, child_id, base_id, base_ctx)
+
     cursor.execute("""
-select base_id, flags, num, value
+insert into tree_edge (base_id, ctx, child_id)
+select %%s, %%s, %%s
+%s
+""" % (where,), params)
+
+    return bool(cursor.rowcount)
+
+
+def select_tree_node(cursor, nid, ctx):
+    if util.ctx_storage(ctx) == context.STORAGE_INT:
+        val_field = 'num'
+    else:
+        val_field = 'value'
+
+    cursor.execute("""
+select flags, %s
 from tree_node
 where
     time_removed is null
-    and guid=%s
-    and ctx=%s
-""", (nid, ctx))
+    and guid=%%s
+    and ctx=%%s
+""" % (val_field,), (nid, ctx))
 
     if not cursor.rowcount:
         return None
 
-    base_id, flags, num, value = cursor.fetchone()
+    flags, value = cursor.fetchone()
 
     return {
         'guid': nid,
-        'base_id': base_id,
         'ctx': ctx,
         'flags': flags,
-        'value': num if value is None else value,
+        'value': value
     }
 
 
-def select_tree_nodes(cursor, base_id, ctx=_missing):
+def select_tree_nodes(cursor, guid_ctx_pairs):
+    flat_pairs = reduce(lambda a, b: a.extend(b) or a, guid_ctx_pairs, [])
+
+    #TODO: EXPLAIN this query
+    cursor.execute("""
+select guid, ctx, flags, num, value
+from tree_node
+where
+    time_removed is null
+    and (guid, ctx) in (%s)
+""" % (','.join('(%s, %s)' for p in guid_ctx_pairs),), flat_pairs)
+
+    return [{
+        'guid': guid,
+        'ctx': ctx,
+        'flags': flags,
+        'value': num if util.ctx_storage(ctx) == context.STORAGE_INT else val,
+        } for guid, ctx, flags, num, val in cursor.fetchall()]
+
+
+def select_tree_node_guids(cursor, base_id, ctx=_missing):
     if ctx is _missing:
         where_ctx = ""
         params = (base_id,)
@@ -517,21 +579,15 @@ def select_tree_nodes(cursor, base_id, ctx=_missing):
         params = (base_id, ctx)
 
     cursor.execute("""
-select guid, ctx, flags, num, value
-from tree_node
+select child_id, ctx
+from tree_edge
 where
     time_removed is null
     and base_id=%%s
     %s
 """ % (where_ctx,), params)
 
-    return [{
-        'guid': guid,
-        'base_id': base_id,
-        'ctx': ctx,
-        'flags': flags,
-        'value': num if value is None else value,
-    } for guid, ctx, flags, num, value in cursor.fetchall()]
+    return cursor.fetchall()
 
 
 def update_tree_node(cursor, nid, ctx, value, old_value=_missing):
@@ -545,15 +601,14 @@ def update_tree_node(cursor, nid, ctx, value, old_value=_missing):
 
     if old_value is _missing:
         oldval_where = ""
-        params = (value, None, nid, ctx)
+        params = (value, nid, ctx)
     else:
-        oldval_field = 'num' if int_storage else 'value'
-        oldval_where = 'and %s=%%s' % (oldval_field,)
-        params = (value, None, nid, ctx, old_value)
+        oldval_where = 'and %s=%%s' % (val_field,)
+        params = (value, nid, ctx, old_value)
 
     cursor.execute("""
 update tree_node
-set %s=%%s, %s=%%s
+set %s=%%s, %s=null
 where
     time_removed is null
     and guid=%%s
@@ -598,14 +653,34 @@ returning num
     return cursor.fetchone()[0]
 
 
-def remove_tree_node(cursor, nid, ctx, base_id):
-    if base_id is _missing:
-        where_base = ""
-        params = (nid, ctx)
-    else:
-        where_base = "and base_id=%s"
-        params = (nid, ctx, base_id)
+def remove_tree_edge(cursor, base_id, ctx, child_id):
+    cursor.execute("""
+update tree_edge
+set time_removed=now()
+where
+    time_removed is null
+    and base_id=%s
+    and ctx=%s
+    and child_id=%s
+""", (base_id, ctx, child_id))
 
+    return bool(cursor.rowcount)
+
+
+def remove_tree_edges_multiple_bases(cursor, base_ids):
+    cursor.execute("""
+update tree_edge
+set time_removed=now()
+where
+    time_removed is null
+    and base_id in (%s)
+returning child_id
+""" % (','.join('%s' for b in base_ids),), base_ids)
+
+    return [r[0] for r in cursor.fetchall()]
+
+
+def remove_tree_node(cursor, nid, ctx):
     cursor.execute("""
 update tree_node
 set time_removed=now()
@@ -613,36 +688,22 @@ where
     time_removed is null
     and guid=%%s
     and ctx=%%s
-    %s
-""" % (where_base,), params)
+""", (nid, ctx))
 
     return bool(cursor.rowcount)
 
 
-def remove_tree_node_descendents_of(cursor, guid):
+def remove_tree_nodes(cursor, nodes):
     cursor.execute("""
-with recursive selection(guid) as (
-        select guid
-        from tree_node
-        where
-            time_removed is null
-            and base_id=%s
-    union all
-        select tn.guid
-        from tree_node tn, selection s
-        where
-            tn.time_removed is null
-            and tn.base_id=s.guid
-)
 update tree_node
 set time_removed=now()
 where
     time_removed is null
-    and guid in (select guid from selection)
+    and guid in (%s)
 returning guid
-""", (guid,))
+""" % (','.join('%s' for n in nodes),), nodes)
 
-    return [x[0] for x in cursor.fetchall()]
+    return [r[0] for r in cursor.fetchall()]
 
 
 def add_flags(cursor, table, flags, where):
