@@ -1409,7 +1409,33 @@ def clear_tree_node_flags(pool, node_id, ctx, flags, timeout=None):
 
 
 def move_tree_node(pool, node_id, ctx, base_id, new_base_id, timeout=None):
-    '''
+    '''move a tree node to underneath a new parent object
+
+    :param ConnectionPool pool:
+        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
+        getting a database connection
+
+    :param int node_id: the guid of the node
+
+    :param int ctx: the node's ctx
+
+    :param int base_id: the guid of the node's current parent object
+
+    :param int new_base_id: the guid of the target parent
+
+    :param timeout:
+        maximum time in seconds that the method is allowed to take; the default
+        of ``None`` means no limit
+
+    :returns:
+        boolean, whether a node was moved. this would be ``False`` if there
+        is no node for the given ``node_id/ctx/base_id`` or if the target
+        parent object doesn't exist
+
+    :raises ReadOnly: if given a read-only pool
+
+    :raises BadContext:
+        if ``ctx`` doesn't correspond to a ``table.TREENODE`` context
     '''
     if pool.readonly:
         raise error.ReadOnly()
