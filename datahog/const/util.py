@@ -67,6 +67,12 @@ def ctx_storage(ctx):
     return meta and meta[2].get('storage')
 
 
+def ctx_schema(ctx):
+    "return the storage schema for a context (if present)"
+    meta = context.META.get(ctx)
+    return meta and meta[2].get('schema')
+
+
 def flags_to_int(ctx, flag_list):
     "convert an iterable of flag consts to a single bitmap integer"
     if ctx not in context.META:
@@ -120,11 +126,19 @@ def storage_wrap(ctx, value):
         return value.encode("utf8")
 
     if st == context.STORAGE_SER:
+        schema = ctx_schema(ctx)
+        if schema:
+            try:
+                return schema(value).dumps()
+            except schema.InvalidMessage:
+                raise error.StorageClassError(
+                        "STORAGE_SER schema validation failed")
         try:
             return mummy.dumps(value)
         except TypeError:
             raise error.StorageClassError(
                     "STORAGE_SER requires a serializable value")
+
 
     raise error.BadContext(ctx)
 
@@ -138,6 +152,9 @@ def storage_unwrap(ctx, value):
         return st.decode("utf8")
 
     if st == context.STORAGE_SER:
+        schema = ctx_schema(ctx)
+        if schema:
+            return schema.untransform(mummy.loads(value))
         return mummy.loads(value)
 
     return value

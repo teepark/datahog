@@ -2,6 +2,8 @@
 
 from __future__ import absolute_import
 
+import mummy
+
 from . import table
 
 
@@ -55,6 +57,11 @@ def set_context(title, value, tbl, meta=None):
                 ``STORAGE_NULL``, ``STORAGE_INT``, ``STORAGE_STR``,
                 ``STORAGE_SER``. applies when ``tbl`` is ``table.PROPERTY``
                 or ``table.NODE``.
+
+            schema
+                in the event of ``'storage': STORAGE_SER``, a schema can be
+                provided, against which values will be validated, and which
+                will also be used to further compress values in the db.
     '''
     if title in globals():
         raise ValueError("context name already in use: %s" % title)
@@ -78,6 +85,10 @@ def set_context(title, value, tbl, meta=None):
 
         if meta.get('storage', STORAGE_NULL) not in STORAGE_TYPES:
             raise ValueError("unrecognized storage type: %d" % meta['storage'])
+
+        if 'schema' in meta:
+            meta['schema'] = type(title.title() + 'Schema', (mummy.Message,),
+                    {'SCHEMA': meta['schema']})
 
     globals()[title] = value
     META[value] = (title, tbl, meta)
