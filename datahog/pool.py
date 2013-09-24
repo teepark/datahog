@@ -3,7 +3,6 @@
 import contextlib
 import Queue
 import random
-import threading
 import time
 
 try:
@@ -12,11 +11,23 @@ except ImportError:
     greenhouse = None
 else:
     import greenhouse.ext.psycopg2 as greenpsycopg2
+
+try:
+    import gevent
+except ImportError:
+    gevent = None
+else:
+    import gevent.core
+    import gevent.event
+    import gevent.queue
+    import gevent.socket
+
 import psycopg2
+import psycopg2.extensions
 
 from . import error
 
-__all__ = ["ConnectionPool"]
+__all__ = []
 
 
 class ConnectionPool(object):
@@ -83,7 +94,7 @@ class ConnectionPool(object):
 
     def wait_ready(self, timeout=None):
         '''Block until all dB connections are ready
-        
+
         :param timeout:
             Maximum time to wait in seconds (the default None means no limit).
 
@@ -160,8 +171,6 @@ class ConnectionPool(object):
     def get_random(self, replace=True, timeout=None):
         return self.get_by_shard(self.random_shard(), replace, timeout)
 
-    _timer = threading.Timer
-
     @contextlib.contextmanager
     def _replacement_context(self, conn):
         try:
@@ -195,18 +204,6 @@ class ConnectionPool(object):
             self._conns[shard['shard']].put(conn)
             done.set()
 
-    @staticmethod
-    def _background(f):
-        threading.Thread(target=f).start()
-
-    @staticmethod
-    def _q():
-        return Queue.Queue()
-
-    @staticmethod
-    def _ev():
-        return threading.Event()
-
 
 if greenhouse:
     __all__.append("GreenhouseConnPool")
@@ -233,3 +230,58 @@ if greenhouse:
             super(GreenhouseConnPool, self).start()
 
         _timer = greenhouse.Timer
+
+
+if gevent:
+    __all__.append("GeventConnPool")
+
+    def _gevent_wait_callback(conn):
+        while 1:
+            state = conn.poll()
+            if state == psycopg2.extensions.POLL_OK:
+                break
+            elif state == psycopg2.extensions.POLL_READ:
+                gevent.socket.wait_read(conn.fileno())
+            elif state == psycopg2.extensions.POLL_WRITE:
+                gevent.socket.wait_write(conn.fileno())
+            else:
+                raise psycopg2.OperationalError(
+                        'Bad result from poll: %r' % state)
+
+    # gevent doesn't have a monkey-patching equivalent of threading.Timer?!
+    class _gevent_timer(object):
+        def __init__(self, timeout, func):
+            self._timeout = timeout
+            self._func = func
+            self._timer = None
+
+        def start(self):
+            if self._timer is None:
+                self._timer = gevent.core.timer(self._timeout, self._func)
+
+        def cancel(self):
+            if self._timer is not None:
+                self._timer.cancel()
+
+    class GeventConnPool(ConnectionPool):
+        '''a :class:`ConnectionPool` that uses gevent_ for blocking calls
+
+        .. _gevent: http://www.gevent.org
+        '''
+        @staticmethod
+        def _background(f):
+            gevent.spawn(f)
+
+        @staticmethod
+        def _q():
+            return gevent.queue.Queue()
+
+        @staticmethod
+        def _ev():
+            return gevent.event.Event()
+
+        def start(self):
+            psycopg2.extensions.set_wait_callback(_gevent_wait_callback)
+            super(GeventConnPool, self).start()
+
+        _timer = _gevent_timer

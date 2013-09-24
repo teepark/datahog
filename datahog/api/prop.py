@@ -2,8 +2,9 @@
 
 from __future__ import absolute_import
 
-from .. import error, query, txn
+from .. import error
 from ..const import context, table, util
+from ..db import query, txn
 
 
 __all__ = ['set', 'get', 'increment', 'add_flags', 'clear_flags', 'remove']

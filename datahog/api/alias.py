@@ -4,8 +4,9 @@ from __future__ import absolute_import
 
 import hashlib
 
-from .. import error, query, txn
+from .. import error
 from ..const import table, util
+from ..db import query, txn
 
 
 __all__ = ['set', 'lookup', 'list', 'add_flags', 'clear_flags', 'remove']

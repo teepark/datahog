@@ -174,7 +174,6 @@ def set_alias(pool, base_id, ctx, alias, flags, timeout):
         return _set_alias(pool, base_id, ctx, alias, flags, timer)
     with timer:
         return _set_alias(pool, base_id, ctx, alias, flags, timer)
-        
 
 def _set_alias(pool, base_id, ctx, alias, flags, timer):
     digest = hashlib.sha1(alias).digest()

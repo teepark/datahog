@@ -4,8 +4,9 @@ from __future__ import absolute_import
 
 import time
 
-from .. import error, query, txn
+from .. import error
 from ..const import context, table, util
+from ..db import query, txn
 
 
 __all__ = ['create', 'get', 'batch_get', 'list_children', 'get_children',
@@ -341,7 +342,7 @@ def add_flags(pool, node_id, ctx, flags, timeout=None):
         of ``None`` means no limit
 
     :returns:
-        the new set of flags, or None if there is no node for the 
+        the new set of flags, or None if there is no node for the
         given ``node_id/ctx``
 
     :raises ReadOnly: if given a read-only ConnectionPool
@@ -390,7 +391,7 @@ def clear_flags(pool, node_id, ctx, flags, timeout=None):
         of ``None`` means no limit
 
     :returns:
-        the new set of flags, or None if there is no node for the 
+        the new set of flags, or None if there is no node for the
         given ``node_id/ctx``
 
     :raises ReadOnly: if given a read-only ConnectionPool

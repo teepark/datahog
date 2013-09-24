@@ -11,6 +11,6 @@ VERSION = (0, 0, 1, "")
 setup(
     name="datahog",
     description="a shardable postgresql-backed data store",
-    packages=["datahog", "datahog.api", "datahog.const"],
+    packages=["datahog", "datahog.api", "datahog.const", "datahog.db"],
     version='.'.join(filter(None, map(str, VERSION))),
 )

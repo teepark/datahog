@@ -2,5 +2,5 @@
 
 from __future__ import absolute_import
 
-from .api import *
-from .dbconn import *
+from .pool import *
+from .api import alias, entity, node, prop, relationship
