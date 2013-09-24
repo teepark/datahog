@@ -2,7 +2,7 @@
 
 from __future__ import absolute_import
 
-from .const import context, table, util
+from ..const import context, table, util
 
 
 _missing = object() # default argument sentinel
@@ -231,22 +231,26 @@ where
     }
 
 
-def select_aliases(cursor, base_id, ctx):
+def select_aliases(cursor, base_id, ctx, limit, start):
     cursor.execute("""
-select flags, value
+select flags, value, pos
 from alias
 where
     time_removed is null
     and base_id=%s
     and ctx=%s
-""", (base_id, ctx))
+    and pos > %s
+order by pos asc
+limit %s
+""", (base_id, ctx, start, limit))
 
     return [{
             'base_id': base_id,
             'flags': flags,
             'ctx': ctx,
+            'pos': pos,
             'value': value
-        } for flags, value in cursor.fetchall()]
+        } for flags, value, pos in cursor.fetchall()], True
 
 
 def maybe_insert_alias_lookup(cursor, digest, ctx, base_id, flags):
@@ -274,13 +278,21 @@ from selectquery
     return True, base_id
 
 
-def insert_alias(cursor, base_id, ctx, value, flags):
+def insert_alias(cursor, base_id, ctx, value, index, flags):
     base_tbl, base_ctx = util.ctx_base(ctx)
     base_tbl = table.NAMES[base_tbl]
 
-    cursor.execute("""
-insert into alias (base_id, ctx, value, flags)
-select %%s, %%s, %%s, %%s
+    if index is None:
+        cursor.execute("""
+insert into alias (base_id, ctx, value, pos, flags)
+select %%s, %%s, %%s, (
+    select count(*)
+    from alias
+    where
+        time_removed is null
+        and base_id=%%s
+        and ctx=%%s
+), %%s
 where exists (
     select 1 from %s
     where
@@ -288,9 +300,34 @@ where exists (
         and guid=%%s
         and ctx=%%s
 )
-""" % (base_tbl,), (base_id, ctx, value, flags, base_id, base_ctx))
+""" % (base_tbl,),
+            (base_id, ctx, value, base_id, ctx, flags, base_id, base_ctx))
+    else:
+        cursor.execute("""
+with increment as (
+update alias
+set pos = pos + 1
+where
+    time_removed is null
+    and base_id=%%s
+    and ctx=%%s
+    and pos >= %%s
+)
+insert into alias (base_id, ctx, value, pos, flags)
+select %%s, %%s, %%s, %%s, %%s
+where exists(
+    select 1 from %s
+    where
+        time_removed is null
+        and guid=%%s
+        and ctx=%%s
+)
+returning 1
+""" % (base_tbl,),
+            (base_id, ctx, index, base_id, ctx, value, index, flags,
+                base_id, base_ctx))
 
-    return cursor.rowcount
+    return bool(cursor.rowcount)
 
 
 def remove_alias_lookup(cursor, digest, ctx, base_id):

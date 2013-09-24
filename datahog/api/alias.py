@@ -12,7 +12,7 @@ from ..db import query, txn
 __all__ = ['set', 'lookup', 'list', 'add_flags', 'clear_flags', 'remove']
 
 
-def set(pool, base_id, ctx, value, flags=None, timeout=None):
+def set(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
     '''set an alias value on a guid object
 
     :param ConnetionPool pool:
@@ -28,6 +28,10 @@ def set(pool, base_id, ctx, value, flags=None, timeout=None):
     :param iterable flags:
         the flags to set in the event that the alias is newly created (this
         is ignored if this alias already exists on the parent)
+
+    :param int index:
+        insert the new alias into position ``index`` for the ``base_id/ctx``,
+        rather than at the end of that list
 
     :param timeout:
         maximum time in seconds that the method is allowed to take; the default
@@ -63,7 +67,7 @@ def set(pool, base_id, ctx, value, flags=None, timeout=None):
 
     flags = util.flags_to_int(ctx, flags or [])
 
-    return txn.set_alias(pool, base_id, ctx, value, flags, timeout)
+    return txn.set_alias(pool, base_id, ctx, value, flags, index, timeout)
 
 
 def lookup(pool, value, ctx, timeout=None):
@@ -95,7 +99,7 @@ def lookup(pool, value, ctx, timeout=None):
     return result
 
 
-def list(pool, base_id, ctx, timeout=None):
+def list(pool, base_id, ctx, limit=100, page_token=None, timeout=None):
     '''list the aliases associated with a guid object for a given context
 
     :param ConnetionPool pool:
@@ -106,21 +110,41 @@ def list(pool, base_id, ctx, timeout=None):
 
     :param int ctx: the alias's context
 
+    :param int limit: maximum number of aliases to return
+
+    :param str page_token:
+        ``page_token`` returned from a previous call to this method. the return
+        value will start after the results of that page.
+
     :param timeout:
         maximum time in seconds that the method is allowed to take; the default
         of ``None`` means no limit
 
     :returns:
-        a list of alias dicts (containing ``base_id``, ``ctx``, ``value``, and
-        ``flags`` keys)
+        two-tuple with a list of alias dicts (containing ``base_id``, ``ctx``,
+        ``pos``, ``value``, and ``flags`` keys), and a ``page_token`` that can
+        be used in subsequent calls to continue paging.
     '''
+    start = -1
+    if page_token is not None:
+        start = _decode_page_token(page_token)
+
     with pool.get_by_guid(base_id, timeout=timeout) as conn:
-        results = query.select_aliases(conn.cursor(), base_id, ctx)
+        results, prev_exists = query.select_aliases(
+                conn.cursor(), base_id, ctx, limit, start)
+
+    if not prev_exists:
+        raise error.BadPageToken(page_token)
 
     for result in results:
         result['flags'] = util.int_to_flags(ctx, result['flags'])
+        pos = result.pop('pos')
 
-    return results
+    token = None
+    if results:
+        token = _encode_page_token(pos)
+
+    return results, token
 
 
 def add_flags(pool, base_id, ctx, value, flags, timeout=None):
@@ -246,3 +270,20 @@ def remove(pool, base_id, ctx, value, timeout=None):
         raise error.ReadOnly()
 
     return txn.remove_alias(pool, base_id, ctx, alias, timeout)
+
+
+_map = '0123456789abcdef'
+
+def _encode_page_token(n):
+    result = []
+    while n:
+        result.append(_map[n & 0xf])
+        n >>= 4
+    return ''.join(result[::-1])
+
+def _decode_page_token(s):
+    result = 0
+    for c in s:
+        result <<= 4
+        result |= _map.index(c)
+    return result

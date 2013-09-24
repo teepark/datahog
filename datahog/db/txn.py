@@ -11,8 +11,9 @@ import time
 import psycopg2
 import psycopg2.extensions
 
-from . import error, query
-from .const import table, util
+from . import query
+from .. import error
+from ..const import table, util
 
 
 class TwoPhaseCommit(object):
@@ -168,14 +169,14 @@ def _lookup_alias(pool, digest, ctx, timer):
     return None
 
 
-def set_alias(pool, base_id, ctx, alias, flags, timeout):
+def set_alias(pool, base_id, ctx, alias, flags, index, timeout):
     timer = Timer(pool, timeout, None)
     if timeout is None:
-        return _set_alias(pool, base_id, ctx, alias, flags, timer)
+        return _set_alias(pool, base_id, ctx, alias, flags, index, timer)
     with timer:
-        return _set_alias(pool, base_id, ctx, alias, flags, timer)
+        return _set_alias(pool, base_id, ctx, alias, flags, index, timer)
 
-def _set_alias(pool, base_id, ctx, alias, flags, timer):
+def _set_alias(pool, base_id, ctx, alias, flags, index, timer):
     digest = hashlib.sha1(alias).digest()
     digest_b64 = digest.encode('base64').strip()
 
@@ -238,7 +239,7 @@ def _set_alias(pool, base_id, ctx, alias, flags, timer):
             timer.conn = conn
             try:
                 result = query.insert_alias(
-                        conn.cursor(), base_id, ctx, alias, flags)
+                        conn.cursor(), base_id, ctx, alias, index, flags)
             finally:
                 timer.conn = None
 

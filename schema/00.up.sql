@@ -40,15 +40,16 @@ create table alias (
   flags smallint default 0 not null,
   time_removed timestamp default null,
   ctx smallint not null,
-  value varchar(255)
+  pos int not null,
+  value varchar(255) not null
 );
 
 create index alias_idx on alias (
-  base_id, ctx
+  base_id, ctx, pos
 ) where time_removed is null;
 
 create table alias_lookup (
-  hash varchar(20),
+  hash varchar(20) not null,
   flags smallint default 0 not null,
   time_removed timestamp default null,
   ctx smallint not null,
