@@ -465,7 +465,7 @@ where
     return cursor.rowcount
 
 
-def insert_tree_node(cursor, base_id, ctx, value, flags):
+def insert_node(cursor, base_id, ctx, value, flags):
     if util.ctx_storage(ctx) == context.STORAGE_INT:
         val_field = 'num'
     else:
@@ -474,7 +474,7 @@ def insert_tree_node(cursor, base_id, ctx, value, flags):
     base_tbl = table.NAMES[base_tbl]
 
     cursor.execute("""
-insert into tree_node (ctx, %s, flags)
+insert into node (ctx, %s, flags)
 select %%s, %%s, %%s
 where exists (
     select 1
@@ -498,7 +498,7 @@ returning guid
     }
 
 
-def insert_tree_edge(cursor, base_id, ctx, child_id, base_ctx=None):
+def insert_edge(cursor, base_id, ctx, child_id, base_ctx=None):
     if base_ctx is None:
         where = ''
         params = (base_id, ctx, child_id)
@@ -514,7 +514,7 @@ def insert_tree_edge(cursor, base_id, ctx, child_id, base_ctx=None):
         params = (base_id, ctx, child_id, base_id, base_ctx)
 
     cursor.execute("""
-insert into tree_edge (base_id, ctx, child_id)
+insert into edge (base_id, ctx, child_id)
 select %%s, %%s, %%s
 %s
 """ % (where,), params)
@@ -522,7 +522,7 @@ select %%s, %%s, %%s
     return bool(cursor.rowcount)
 
 
-def select_tree_node(cursor, nid, ctx):
+def select_node(cursor, nid, ctx):
     if util.ctx_storage(ctx) == context.STORAGE_INT:
         val_field = 'num'
     else:
@@ -530,7 +530,7 @@ def select_tree_node(cursor, nid, ctx):
 
     cursor.execute("""
 select flags, %s
-from tree_node
+from node
 where
     time_removed is null
     and guid=%%s
@@ -550,13 +550,13 @@ where
     }
 
 
-def select_tree_nodes(cursor, guid_ctx_pairs):
+def select_nodes(cursor, guid_ctx_pairs):
     flat_pairs = reduce(lambda a, b: a.extend(b) or a, guid_ctx_pairs, [])
 
     #TODO: EXPLAIN this query
     cursor.execute("""
 select guid, ctx, flags, num, value
-from tree_node
+from node
 where
     time_removed is null
     and (guid, ctx) in (%s)
@@ -570,7 +570,7 @@ where
         } for guid, ctx, flags, num, val in cursor.fetchall()]
 
 
-def select_tree_node_guids(cursor, base_id, ctx=_missing):
+def select_node_guids(cursor, base_id, ctx=_missing):
     if ctx is _missing:
         where_ctx = ""
         params = (base_id,)
@@ -580,7 +580,7 @@ def select_tree_node_guids(cursor, base_id, ctx=_missing):
 
     cursor.execute("""
 select child_id, ctx
-from tree_edge
+from edge
 where
     time_removed is null
     and base_id=%%s
@@ -590,7 +590,7 @@ where
     return cursor.fetchall()
 
 
-def update_tree_node(cursor, nid, ctx, value, old_value=_missing):
+def update_node(cursor, nid, ctx, value, old_value=_missing):
     int_storage = util.ctx_storage(ctx) == context.STORAGE_INT
     if int_storage:
         val_field = 'num'
@@ -607,7 +607,7 @@ def update_tree_node(cursor, nid, ctx, value, old_value=_missing):
         params = (value, nid, ctx, old_value)
 
     cursor.execute("""
-update tree_node
+update node
 set %s=%%s, %s=null
 where
     time_removed is null
@@ -619,10 +619,10 @@ where
     return bool(cursor.rowcount)
 
 
-def increment_tree_node(cursor, nid, ctx, by=1, limit=_missing):
+def increment_node(cursor, nid, ctx, by=1, limit=_missing):
     if limit is _missing:
         cursor.execute("""
-update tree_node
+update node
 set num=num+%s
 where
     time_removed is null
@@ -634,7 +634,7 @@ returning num
     else:
         op = '>' if by < 0 else '<'
         cursor.execute("""
-update tree_node
+update node
 set num=case
     when (num+%%s %s %%s)
     then num+%%s
@@ -653,9 +653,9 @@ returning num
     return cursor.fetchone()[0]
 
 
-def remove_tree_edge(cursor, base_id, ctx, child_id):
+def remove_edge(cursor, base_id, ctx, child_id):
     cursor.execute("""
-update tree_edge
+update edge
 set time_removed=now()
 where
     time_removed is null
@@ -667,9 +667,9 @@ where
     return bool(cursor.rowcount)
 
 
-def remove_tree_edges_multiple_bases(cursor, base_ids):
+def remove_edges_multiple_bases(cursor, base_ids):
     cursor.execute("""
-update tree_edge
+update edge
 set time_removed=now()
 where
     time_removed is null
@@ -680,9 +680,9 @@ returning child_id
     return [r[0] for r in cursor.fetchall()]
 
 
-def remove_tree_node(cursor, nid, ctx):
+def remove_node(cursor, nid, ctx):
     cursor.execute("""
-update tree_node
+update node
 set time_removed=now()
 where
     time_removed is null
@@ -693,9 +693,9 @@ where
     return bool(cursor.rowcount)
 
 
-def remove_tree_nodes(cursor, nodes):
+def remove_nodes(cursor, nodes):
     cursor.execute("""
-update tree_node
+update node
 set time_removed=now()
 where
     time_removed is null

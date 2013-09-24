@@ -82,7 +82,7 @@ create unique index relationship_uniq_backward on relationship (
 
 -- TREE --
 
-create table tree_node (
+create table node (
   guid bigint not null default nextval('guids'),
   flags smallint default 0 not null,
   time_removed timestamp default null,
@@ -92,17 +92,17 @@ create table tree_node (
   check (num is null or value is null)
 );
 
-create unique index treenode_guid on tree_node (
+create unique index node_guid on node (
   guid
 ) where time_removed is null;
 
-create table tree_edge (
+create table edge (
   base_id bigint not null,
   time_removed timestamp default null,
   ctx smallint not null,
   child_id bigint not null
 );
 
-create index tree_edge_idx on tree_edge (
+create index edge_idx on edge (
   base_id, ctx
 ) where time_removed is null;

@@ -1,5 +1,5 @@
-drop table tree_edge;
-drop table tree_node;
+drop table edge;
+drop table node;
 drop table relationship;
 drop table alias_lookup;
 drop table alias;

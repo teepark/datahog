@@ -647,26 +647,26 @@ def _remove_relationship_pair(pool, base_id, rel_id, ctx, timer):
             return True
 
 
-def create_tree_node(pool, base_id, ctx, value, flags, timeout):
+def create_node(pool, base_id, ctx, value, flags, timeout):
     with pool.get_by_guid(base_id, timeout=timeout) as conn:
         cursor = conn.cursor()
-        node = query.insert_tree_node(cursor, base_id, ctx, value, flags)
+        node = query.insert_node(cursor, base_id, ctx, value, flags)
         if node is None:
             return None
 
-        query.insert_tree_edge(cursor, base_id, ctx, node['guid'])
+        query.insert_edge(cursor, base_id, ctx, node['guid'])
         return node
 
 
-def move_tree_node(pool, node_id, ctx, base_id, new_base_id, timeout):
+def move_node(pool, node_id, ctx, base_id, new_base_id, timeout):
     if pool.shard_by_guid(base_id) == pool.shard_by_guid(new_base_id):
         with pool.get_by_guid(base_id, timeout=timeout) as conn:
             cursor = conn.cursor()
-            if not query.remove_tree_edge(cursor, base_id, ctx, node_id):
+            if not query.remove_edge(cursor, base_id, ctx, node_id):
                 return False
 
             base_ctx = util.ctx_base_ctx(ctx)
-            if not query.insert_tree_edge(
+            if not query.insert_edge(
                     cursor, new_base_id, ctx, node_id, base_ctx):
                 conn.rollback()
                 return False
@@ -675,20 +675,20 @@ def move_tree_node(pool, node_id, ctx, base_id, new_base_id, timeout):
 
     timer = Timer(pool, timeout, None)
     if timeout is None:
-        return _move_tree_node(pool, node_id, ctx, base_id, new_base_id, timer)
+        return _move_node(pool, node_id, ctx, base_id, new_base_id, timer)
     with timer:
-        return _move_tree_node(pool, node_id, ctx, base_id, new_base_id, timer)
+        return _move_node(pool, node_id, ctx, base_id, new_base_id, timer)
 
 
-def _move_tree_node(pool, node_id, ctx, base_id, new_base_id, timer):
+def _move_node(pool, node_id, ctx, base_id, new_base_id, timer):
     base_ctx = util.ctx_base_ctx(ctx)
 
-    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'move_tree_node',
+    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'move_node',
             (node_id, ctx, base_id, new_base_id))
     try:
         with tpc as conn:
             timer.conn = conn
-            if not query.remove_tree_edge(
+            if not query.remove_edge(
                     conn.cursor(), base_id, ctx, node_id):
                 tpc.fail()
                 return False
@@ -700,7 +700,7 @@ def _move_tree_node(pool, node_id, ctx, base_id, new_base_id, timer):
         with pool.get_by_guid(new_base_id) as conn:
             timer.conn = conn
             try:
-                if not query.insert_tree_edge(
+                if not query.insert_edge(
                         conn.cursor(), new_base_id, ctx, node_id, base_ctx):
                     tpc.fail()
                     return False
@@ -717,7 +717,7 @@ def _remove_local_estates(shard, pool, cursor, estate, first_round=True):
 
     while guids:
         if first_round:
-            guids = query.remove_tree_nodes(cursor, guids)
+            guids = query.remove_nodes(cursor, guids)
             first_round = False
 
         aliases = query.remove_aliases_multiple_bases(cursor, guids)
@@ -737,9 +737,9 @@ def _remove_local_estates(shard, pool, cursor, estate, first_round=True):
             item = (base_id, ctx, not forward, rel_id)
             estate.setdefault(s, (set(), [], []))[1].append(item)
 
-        children = query.remove_tree_edges_multiple_bases(cursor, guids)
+        children = query.remove_edges_multiple_bases(cursor, guids)
         for pair in children:
-            # append each child tree_node to its shard
+            # append each child node to its shard
             s = pool.shard_by_guid(pair[0])
             estate.setdefault(s, (set(), [], []))[2].append(pair)
 
@@ -813,23 +813,23 @@ def _remove_entity(pool, guid, ctx, timer):
     return True
 
 
-def remove_tree_node(pool, guid, ctx, base_id, timeout):
+def remove_node(pool, guid, ctx, base_id, timeout):
     timer = Timer(pool, timeout, None)
     if timeout is None:
-        return _remove_tree_node(pool, guid, ctx, base_id, timer)
+        return _remove_node(pool, guid, ctx, base_id, timer)
     with timer:
-        return _remove_tree_node(pool, guid, ctx, base_id, timer)
+        return _remove_node(pool, guid, ctx, base_id, timer)
 
-def _remove_tree_node(pool, guid, ctx, base_id, timer):
+def _remove_node(pool, guid, ctx, base_id, timer):
     shard = pool.shard_by_guid(base_id)
-    tpc = TwoPhaseCommit(pool, shard, "remove_tree_node_edge",
+    tpc = TwoPhaseCommit(pool, shard, "remove_node_edge",
             (guid, ctx, base_id, shard))
     tpcs = [tpc]
 
     try:
         with tpc as conn:
             timer.conn = conn
-            if not query.remove_tree_edge(
+            if not query.remove_edge(
                     conn.cursor(), base_id, ctx, guid):
                 tpc.fail()
                 return False
@@ -842,7 +842,7 @@ def _remove_tree_node(pool, guid, ctx, base_id, timer):
     try:
         while estates:
             shard = next(iter(estates))
-            tpc = TwoPhaseCommit(pool, shard, 'remove_tree_node_shard',
+            tpc = TwoPhaseCommit(pool, shard, 'remove_node_shard',
                     (guid, ctx, base_id, shard))
             tpcs.append(tpc)
 

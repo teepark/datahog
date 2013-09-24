@@ -41,7 +41,7 @@ def set_context(title, value, tbl, meta=None):
 
             base_ctx
                 the context value of the object to which it is related through
-                its ``base_id``. applies when ``tbl`` is ``table.TREENODE``,
+                its ``base_id``. applies when ``tbl`` is ``table.NODE``,
                 ``table.PROPERTY``, ``table.ALIAS``, or
                 ``table.RELATIONSHIP``.
 
@@ -54,7 +54,7 @@ def set_context(title, value, tbl, meta=None):
                 defines behavior of the int/str storage columns. must be one of
                 ``STORAGE_NULL``, ``STORAGE_INT``, ``STORAGE_STR``,
                 ``STORAGE_SER``. applies when ``tbl`` is ``table.PROPERTY``
-                or ``table.TREENODE``.
+                or ``table.NODE``.
     '''
     if title in globals():
         raise ValueError("context name already in use: %s" % title)
