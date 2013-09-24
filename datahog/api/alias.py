@@ -273,6 +273,7 @@ def remove(pool, base_id, ctx, value, timeout=None):
 
 
 _map = '0123456789abcdef'
+_revmap = {c: i for i, c in enumerate(_map)}
 
 def _encode_page_token(n):
     result = []
@@ -285,5 +286,5 @@ def _decode_page_token(s):
     result = 0
     for c in s:
         result <<= 4
-        result |= _map.index(c)
+        result |= _revmap[c]
     return result
