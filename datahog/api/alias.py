@@ -234,6 +234,38 @@ def clear_flags(pool, base_id, ctx, alias, flags, timeout=None):
     return util.int_to_flags(ctx, result)
 
 
+def shift(pool, base_id, ctx, value, index, timeout=None):
+    '''change the ordered position of an alias
+
+    :param ConnectionPool pool:
+        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
+        getting a database connection
+
+    :param int base_id: the guid of the parent object
+
+    :param int ctx: the alias's context
+
+    :param str value: string value of the alias
+
+    :param int index: the new index to which to move the alias
+
+    :param timeout:
+        maximum time in seconds that the method is allowed to take; the default
+        of ``None`` means no limit
+
+    :returns:
+        boolean of whether the move happened or not. it might not happen if
+        there is no
+
+    :raises ReadOnly: if given a read-only ``pool``
+    '''
+    if pool.readonly:
+        raise error.ReadOnly()
+
+    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+        return query.reorder_alias(conn.cursor(), base_id, ctx, value, index)
+
+
 def remove(pool, base_id, ctx, value, timeout=None):
     '''remove a stored alias
 
@@ -260,4 +292,4 @@ def remove(pool, base_id, ctx, value, timeout=None):
     if pool.readonly:
         raise error.ReadOnly()
 
-    return txn.remove_alias(pool, base_id, ctx, alias, timeout)
+    return txn.remove_alias(pool, base_id, ctx, value, timeout)

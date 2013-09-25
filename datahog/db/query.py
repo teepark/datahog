@@ -330,6 +330,46 @@ returning 1
     return bool(cursor.rowcount)
 
 
+def reorder_alias(cursor, base_id, ctx, value, pos):
+    cursor.execute("""
+with oldpos as (
+    select pos
+    from alias
+    where
+        time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and value=%s
+), bump as (
+    update alias
+    set pos=pos + (case
+        when (select pos from oldpos) < pos
+        then -1
+        else 1
+        end)
+    where
+        exists (select 1 from oldpos)
+        and time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and pos between symmetric (select pos from oldpos) and %s
+    returning 1
+), move as (
+    update alias
+    set pos=%s
+    where
+        time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and value=%s
+    returning 1
+)
+select exists (select 1 from move)
+""", (base_id, ctx, value, base_id, ctx, pos, pos, base_id, ctx, value))
+
+    return cursor.fetchone()[0]
+
+
 def remove_alias_lookup(cursor, digest, ctx, base_id):
     cursor.execute("""
 update alias_lookup
@@ -346,14 +386,27 @@ where
 
 def remove_alias(cursor, base_id, ctx, value):
     cursor.execute("""
-update alias
-set time_removed=now()
-where
-    time_removed is null
-    and base_id=%s
-    and ctx=%s
-    and value=%s
-""", (base_id, ctx, value))
+with removal as (
+    update alias
+    set time_removed=now()
+    where
+        time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and value=%s
+    returning pos
+), bump as (
+    update alias
+    set pos = pos - 1
+    where
+        exists (select 1 from removal)
+        and time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and pos > (select pos from removal)
+)
+select 1 from removal
+""", (base_id, ctx, value, base_id, ctx))
 
     return cursor.rowcount
 
