@@ -239,7 +239,7 @@ where
     time_removed is null
     and base_id=%s
     and ctx=%s
-    and pos > %s
+    and pos >= %s
 order by pos asc
 limit %s
 """, (base_id, ctx, start, limit))

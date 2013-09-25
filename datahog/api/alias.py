@@ -31,7 +31,7 @@ def set(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
 
     :param int index:
         insert the new alias into position ``index`` for the ``base_id/ctx``,
-        rather than at the end of that list
+        rather than at the end of the list
 
     :param timeout:
         maximum time in seconds that the method is allowed to take; the default
@@ -99,7 +99,7 @@ def lookup(pool, value, ctx, timeout=None):
     return result
 
 
-def list(pool, base_id, ctx, limit=100, page_token=None, timeout=None):
+def list(pool, base_id, ctx, limit=100, start=0, timeout=None):
     '''list the aliases associated with a guid object for a given context
 
     :param ConnetionPool pool:
@@ -112,9 +112,9 @@ def list(pool, base_id, ctx, limit=100, page_token=None, timeout=None):
 
     :param int limit: maximum number of aliases to return
 
-    :param str page_token:
-        ``page_token`` returned from a previous call to this method. the return
-        value will start after the results of that page.
+    :param int start:
+        an integer representing the index in the list of aliases from which to
+        start the results
 
     :param timeout:
         maximum time in seconds that the method is allowed to take; the default
@@ -122,29 +122,20 @@ def list(pool, base_id, ctx, limit=100, page_token=None, timeout=None):
 
     :returns:
         two-tuple with a list of alias dicts (containing ``base_id``, ``ctx``,
-        ``pos``, ``value``, and ``flags`` keys), and a ``page_token`` that can
-        be used in subsequent calls to continue paging.
+        ``value``, and ``flags`` keys), and the integer position of the last
+        alias in the list which can be used a ``start`` in subsequent calls to
+        page forward from here.
     '''
-    start = -1
-    if page_token is not None:
-        start = _decode_page_token(page_token)
-
     with pool.get_by_guid(base_id, timeout=timeout) as conn:
         results, prev_exists = query.select_aliases(
                 conn.cursor(), base_id, ctx, limit, start)
 
-    if not prev_exists:
-        raise error.BadPageToken(page_token)
-
+    pos = 0
     for result in results:
         result['flags'] = util.int_to_flags(ctx, result['flags'])
         pos = result.pop('pos')
 
-    token = None
-    if results:
-        token = _encode_page_token(pos)
-
-    return results, token
+    return results, pos
 
 
 def add_flags(pool, base_id, ctx, value, flags, timeout=None):
@@ -270,21 +261,3 @@ def remove(pool, base_id, ctx, value, timeout=None):
         raise error.ReadOnly()
 
     return txn.remove_alias(pool, base_id, ctx, alias, timeout)
-
-
-_map = '0123456789abcdef'
-_revmap = {c: i for i, c in enumerate(_map)}
-
-def _encode_page_token(n):
-    result = []
-    while n:
-        result.append(_map[n & 0xf])
-        n >>= 4
-    return ''.join(result[::-1])
-
-def _decode_page_token(s):
-    result = 0
-    for c in s:
-        result <<= 4
-        result |= _revmap[c]
-    return result
