@@ -122,9 +122,9 @@ def list(pool, base_id, ctx, limit=100, start=0, timeout=None):
 
     :returns:
         two-tuple with a list of alias dicts (containing ``base_id``, ``ctx``,
-        ``value``, and ``flags`` keys), and the integer position of the last
-        alias in the list which can be used a ``start`` in subsequent calls to
-        page forward from here.
+        ``value``, and ``flags`` keys), and an integer position that can be
+        used as ``start`` in a subsequent call to page forward from after the
+        end of this result list.
     '''
     with pool.get_by_guid(base_id, timeout=timeout) as conn:
         results, prev_exists = query.select_aliases(
@@ -133,7 +133,7 @@ def list(pool, base_id, ctx, limit=100, start=0, timeout=None):
     pos = 0
     for result in results:
         result['flags'] = util.int_to_flags(ctx, result['flags'])
-        pos = result.pop('pos')
+        pos = result.pop('pos') + 1
 
     return results, pos
 

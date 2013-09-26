@@ -408,7 +408,7 @@ with removal as (
 select 1 from removal
 """, (base_id, ctx, value, base_id, ctx))
 
-    return cursor.rowcount
+    return bool(cursor.rowcount)
 
 
 def remove_alias_lookups_multi(cursor, aliases):
