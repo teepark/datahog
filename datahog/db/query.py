@@ -353,7 +353,6 @@ with oldpos as (
         and base_id=%s
         and ctx=%s
         and pos between symmetric (select pos from oldpos) and %s
-    returning 1
 ), move as (
     update alias
     set pos=%s
@@ -439,18 +438,29 @@ returning value, ctx
     return cursor.fetchall()
 
 
-def insert_relationship(cursor, base_id, rel_id, ctx, forward, flags):
+def insert_relationship(cursor, base_id, rel_id, ctx, forward, index, flags):
     if forward:
         guid_tbl, guid_ctx = util.ctx_base(ctx)
         guid = base_id
+        guid_col = 'base_id'
     else:
         guid_tbl, guid_ctx = util.ctx_rel(ctx)
         guid = rel_id
+        guid_col = 'rel_id'
     guid_tbl = table.NAMES[guid_tbl]
 
-    cursor.execute("""
-insert into relationship (base_id, rel_id, ctx, forward, flags)
-select %%s, %%s, %%s, %%s, %%s
+    if index is None:
+        cursor.execute("""
+insert into relationship (base_id, rel_id, ctx, forward, pos, flags)
+select %%s, %%s, %%s, %%s, (
+    select count(*)
+    from relationship
+    where
+        time_removed is null
+        and %s=%%s
+        and ctx=%%s
+        and forward=%%s
+), %%s
 where
     exists (
         select 1
@@ -461,54 +471,111 @@ where
             and ctx=%%s
     )
 returning 1
-""" % (guid_tbl,), (
-        base_id, rel_id, ctx, forward, flags,
+""" % (guid_col, guid_tbl), (
+        base_id, rel_id, ctx, forward,
+        guid, ctx, forward,
+        flags,
         guid, guid_ctx))
+
+    else:
+        cursor.execute("""
+with eligible as (
+    select 1
+    from %s
+    where
+        time_removed is null
+        and guid=%%s
+        and ctx=%%s
+), bump as (
+    update relationship
+    set pos=pos + 1
+    where
+        exists (select 1 from eligible)
+        and time_removed is null
+        and forward=%%s
+        and %s=%%s
+        and ctx=%%s
+        and pos >= %%s
+)
+insert into relationship (base_id, rel_id, ctx, forward, pos, flags)
+select %%s, %%s, %%s, %%s, %%s, %%s
+where exists (select 1 from eligible)
+returning 1
+""" % (guid_tbl, guid_col), (guid, guid_ctx,
+            forward, guid, ctx, index,
+            base_id, rel_id, ctx, forward, index, flags))
 
     return cursor.rowcount
 
 
-def select_relationships(cursor, guid, ctx, forward, other_guid=_missing):
+def select_relationships(cursor, guid, ctx, forward, limit, start, other_guid=_missing):
     here_name = "base_id" if forward else "rel_id"
     other_name = "rel_id" if forward else "base_id"
 
     if other_guid is _missing:
         clause = ""
-        params = (guid, ctx, forward)
+        params = (guid, ctx, forward, start, limit)
     else:
         clause = "and %s=%%s" % (other_name,)
-        params = (guid, ctx, forward, other_guid)
+        params = (guid, ctx, forward, start, other_guid, limit)
 
     cursor.execute("""
-select %s, flags
+select %s, flags, pos
 from relationship
 where
     time_removed is null
     and %s=%%s
     and ctx=%%s
     and forward=%%s
+    and pos >= %%s
     %s
+order by pos asc
+limit %%s
 """ % (other_name, here_name, clause), params)
 
     return [{
             here_name: guid,
             'flags': flags,
             other_name: other_guid,
-            'ctx': ctx}
-        for other_guid, flags in cursor.fetchall()]
+            'ctx': ctx,
+            'pos': pos}
+        for other_guid, flags, pos in cursor.fetchall()]
 
 
 def remove_relationship(cursor, base_id, rel_id, ctx, forward):
+    if forward:
+        anchor_guid = base_id
+        anchor_col = "base_id"
+    else:
+        anchor_guid = rel_id
+        anchor_col = "rel_id"
+
     cursor.execute("""
-update relationship
-set time_removed=now()
-where
-    time_removed is null
-    and base_id=%s
-    and ctx=%s
-    and forward=%s
-    and rel_id=%s
-""", (base_id, ctx, forward, rel_id))
+with removal as (
+    update relationship
+    set time_removed=now()
+    where
+        time_removed is null
+        and base_id=%%s
+        and ctx=%%s
+        and forward=%%s
+        and rel_id=%%s
+    returning pos
+), bump as (
+    update relationship
+    set pos = pos - 1
+    where
+        exists (select 1 from removal)
+        and time_removed is null
+        and %s=%%s
+        and ctx=%%s
+        and forward=%%s
+        and pos > (select pos from removal)
+)
+select 1 from removal
+""" % (anchor_col,), (
+        base_id, ctx, forward, rel_id,
+        anchor_guid, ctx, forward))
 
     return bool(cursor.rowcount)
 
@@ -553,6 +620,89 @@ where
 """ % (','.join('(%s, %s, %s, %s)' for x in rels),), flat_rels)
 
     return cursor.rowcount
+
+
+def bulk_reorder_relationships(cursor, pairs, forward):
+    anchor_col = "base_id" if forward else "rel_id"
+    data_col = "rel_id" if forward else "base_id"
+
+    replace = ','.join('(%s,%s)' for p in pairs)
+    flat_pairs = reduce(lambda a, b: a.extend(b) or a, pairs, [])
+
+    cursor.execute("""
+update relationship
+set pos = ordering.counter - 1
+from (
+    select row_number() over (
+        partition by (%s, ctx)
+        order by pos asc
+    ) counter, %s
+    from relationship
+    where
+        time_removed is null
+        and forward=%%s
+        and (%s, ctx) in (%s)
+) as ordering
+where
+    relationship.rel_id = ordering.rel_id
+    and relationship.time_removed is null
+    and relationship.forward=%%s
+    and (relationship.%s, relationship.ctx) in (%s)
+returning 1
+""" % (anchor_col, data_col, anchor_col, replace, anchor_col, replace),
+        ([forward] + flat_pairs) * 2)
+
+    return cursor.rowcount
+
+
+def reorder_relationship(cursor, base_id, rel_id, ctx, forward, pos):
+    anchor_col = "base_id" if forward else "rel_id"
+    anchor_guid = base_id if forward else rel_id
+
+    cursor.execute("""
+with oldpos as (
+    select pos
+    from relationship
+    where
+        time_removed is null
+        and forward=%%s
+        and base_id=%%s
+        and ctx=%%s
+        and rel_id=%%s
+), bump as (
+    update relationship
+    set pos=pos + (case
+        when (select pos from oldpos) < pos
+        then -1
+        else 1
+        end)
+    where
+        exists (select 1 from oldpos)
+        and time_removed is null
+        and forward=%%s
+        and %s=%%s
+        and ctx=%%s
+        and pos between symmetric (select pos from oldpos) and %%s
+    returning 1
+), move as (
+    update relationship
+    set pos=%%s
+    where
+        time_removed is null
+        and forward=%%s
+        and base_id=%%s
+        and ctx=%%s
+        and rel_id=%%s
+    returning 1
+)
+select exists (select 1 from move)
+""" % (anchor_col,), (
+        forward, base_id, ctx, rel_id,
+        forward, anchor_guid, ctx, pos,
+        pos,
+        forward, base_id, ctx, rel_id))
+
+    return cursor.fetchone()[0]
 
 
 def insert_node(cursor, base_id, ctx, value, flags):

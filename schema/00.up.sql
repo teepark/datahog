@@ -69,6 +69,7 @@ create table relationship (
   time_removed timestamp default null,
   rel_id bigint not null,
   ctx smallint not null,
+  pos int not null,
   forward bool not null
 );
 
@@ -76,8 +77,16 @@ create unique index relationship_uniq_forward on relationship (
   base_id, ctx, rel_id
 ) where time_removed is null and forward=true;
 
+create index relationship_forward_idx on relationship (
+  base_id, ctx, pos
+) where time_removed is null and forward=true;
+
 create unique index relationship_uniq_backward on relationship (
   rel_id, ctx, base_id
+) where time_removed is null and forward=false;
+
+create index relationship_backward_idx on relationship (
+  rel_id, ctx, pos
 ) where time_removed is null and forward=false;
 
 

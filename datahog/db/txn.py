@@ -449,24 +449,26 @@ def _remove_alias(pool, base_id, ctx, alias, timer):
     return True
 
 
-def create_relationship_pair(pool, base_id, rel_id, ctx, flags, timeout):
+def create_relationship_pair(pool, base_id, rel_id, ctx, forw_idx, rev_idx,
+        flags, timeout):
     timer = Timer(pool, timeout, None)
     if timeout is None:
         return _create_relationship_pair(
-                pool, base_id, rel_id, ctx, flags, timer)
+                pool, base_id, rel_id, ctx, forw_idx, rev_idx, flags, timer)
     with timer:
         return _create_relationship_pair(
-                pool, base_id, rel_id, ctx, flags, timer)
+                pool, base_id, rel_id, ctx, forw_idx, rev_idx, flags, timer)
 
-def _create_relationship_pair(pool, base_id, rel_id, ctx, flags, timer):
+def _create_relationship_pair(pool, base_id, rel_id, ctx, forw_idx, rev_idx,
+        flags, timer):
     tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id),
             'create_relationship_pair', (base_id, rel_id, ctx))
     try:
         with tpc as conn:
             timer.conn = conn
             try:
-                inserted = query.insert_relationship(
-                        conn.cursor(), base_id, rel_id, ctx, True, flags)
+                inserted = query.insert_relationship(conn.cursor(), base_id,
+                        rel_id, ctx, True, forw_idx, flags)
             finally:
                 timer.conn = None
 
@@ -489,8 +491,8 @@ def _create_relationship_pair(pool, base_id, rel_id, ctx, flags, timer):
             with pool.get_by_guid(rel_id) as conn:
                 timer.conn = conn
                 try:
-                    inserted = query.insert_relationship(
-                            conn.cursor(), base_id, rel_id, ctx, False, flags)
+                    inserted = query.insert_relationship(conn.cursor(),
+                            base_id, rel_id, ctx, False, rev_idx, flags)
                 finally:
                     timer.conn = None
 
@@ -756,6 +758,18 @@ def _remove_local_estates(shard, pool, cursor, estate, first_round=True):
 
     if rels:
         query.remove_relationships_multi(cursor, rels)
+
+        forw, rev = set(), set()
+        for base_id, ctx, forward, rel_id in rels:
+            if forward:
+                forw.add((base_id, ctx))
+            else:
+                rev.add((rel_id, ctx))
+        if forw:
+            query.bulk_reorder_relationships(cursor, forw, True)
+        if rev:
+            query.bulk_reorder_relationships(cursor, rev, False)
+
 
     estate.pop(shard)
 
