@@ -255,7 +255,7 @@ def shift(pool, base_id, ctx, value, index, timeout=None):
 
     :returns:
         boolean of whether the move happened or not. it might not happen if
-        there is no
+        there is no alias for the given ``base_id/ctx/value``
 
     :raises ReadOnly: if given a read-only ``pool``
     '''
