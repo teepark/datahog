@@ -2,5 +2,6 @@
 
 from __future__ import absolute_import
 
-from .pool import *
 from .api import alias, entity, node, prop, relationship
+from .const import *
+from .pool import *
