@@ -69,6 +69,27 @@ where
     return True, value, flags
 
 
+def select_properties(cursor, base_id, ctxs):
+    cursor.execute("""
+select ctx, num, value, flags
+from property
+where
+    time_removed is null
+    and base_id=%%s
+    and ctx in (%s)
+""" % (','.join('%s' for c in sorted(ctxs)),), (base_id,) + tuple(ctxs))
+
+    results = {ctx: {
+            'base_id': base_id,
+            'ctx': ctx,
+            'flags': flags,
+            'value': (num if util.ctx_storage(ctx) == context.STORAGE_INT
+                    else value),
+        } for ctx, num, value, flags in cursor.fetchall()}
+
+    return map(results.get, ctxs)
+
+
 def upsert_property(cursor, base_id, ctx, value, flags):
     if util.ctx_storage(ctx) == context.STORAGE_INT:
         val_field = 'num'

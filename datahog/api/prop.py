@@ -116,6 +116,30 @@ def get(pool, base_id, ctx, timeout=None):
         }
 
 
+def get_list(pool, base_id, ctx_list, timeout=None):
+    '''fetch the properties under a base_id for a list of contexts
+
+    :param ConnetionPool pool:
+        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
+        getting a database connection
+
+    :param int base_id: the guid of the parent object
+
+    :param int ctx_list: the contexts of the properties to fetch
+
+    :param timeout:
+        maximum time in seconds that the method is allowed to take; the default
+        of ``None`` means no limit
+
+    :returns:
+        a list of the same length as ``ctx_list`` of property dicts (containing
+        ``base_id``, ``ctx``, ``flags``, and ``value`` keys) or ``None``s,
+        depending on whether the property exists for a given context.
+    '''
+    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+        return query.select_properties(conn.cursor(), base_id, ctx_list)
+
+
 def increment(pool, base_id, ctx, by=1, limit=None, timeout=None):
     '''increment (or decrement) a numeric property's value
 
