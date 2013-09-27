@@ -39,10 +39,10 @@ def main(env, argv):
     here = os.path.dirname(os.path.abspath(__file__))
 
     conn = psycopg2.connect(host='localhost', port=5432,
-			user=user, password=pwd, database=dbname)
+            user=user, password=pwd, database=dbname)
 
     with conn, open('%s/%s.%s.sql' %
-			(here, migration, forward), 'r') as fp:
+            (here, migration, forward), 'r') as fp:
         cursor = conn.cursor()
         cursor.execute(fp.read() % {
             'start': max(shardnum << 56, 1),

@@ -649,18 +649,18 @@ def _remove_relationship_pair(pool, base_id, rel_id, ctx, timer):
             return True
 
 
-def create_node(pool, base_id, ctx, value, flags, timeout):
+def create_node(pool, base_id, ctx, value, index, flags, timeout):
     with pool.get_by_guid(base_id, timeout=timeout) as conn:
         cursor = conn.cursor()
         node = query.insert_node(cursor, base_id, ctx, value, flags)
         if node is None:
             return None
 
-        query.insert_edge(cursor, base_id, ctx, node['guid'])
+        query.insert_edge(cursor, base_id, ctx, node['guid'], index)
         return node
 
 
-def move_node(pool, node_id, ctx, base_id, new_base_id, timeout):
+def move_node(pool, node_id, ctx, base_id, new_base_id, index, timeout):
     if pool.shard_by_guid(base_id) == pool.shard_by_guid(new_base_id):
         with pool.get_by_guid(base_id, timeout=timeout) as conn:
             cursor = conn.cursor()
@@ -669,7 +669,7 @@ def move_node(pool, node_id, ctx, base_id, new_base_id, timeout):
 
             base_ctx = util.ctx_base_ctx(ctx)
             if not query.insert_edge(
-                    cursor, new_base_id, ctx, node_id, base_ctx):
+                    cursor, new_base_id, ctx, node_id, index, base_ctx):
                 conn.rollback()
                 return False
 
@@ -702,8 +702,8 @@ def _move_node(pool, node_id, ctx, base_id, new_base_id, timer):
         with pool.get_by_guid(new_base_id) as conn:
             timer.conn = conn
             try:
-                if not query.insert_edge(
-                        conn.cursor(), new_base_id, ctx, node_id, base_ctx):
+                if not query.insert_edge(conn.cursor(),
+                        new_base_id, ctx, node_id, None, base_ctx):
                     tpc.fail()
                     return False
             finally:

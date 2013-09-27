@@ -16,7 +16,7 @@ __all__ = ['create', 'get', 'batch_get', 'list_children', 'get_children',
 _missing = object()
 
 
-def create(pool, base_id, ctx, value, flags=None, timeout=None):
+def create(pool, base_id, ctx, value, index=None, flags=None, timeout=None):
     '''make a new node
 
     :param ConnectionPool pool:
@@ -30,6 +30,10 @@ def create(pool, base_id, ctx, value, flags=None, timeout=None):
     :param value:
         the value for the node. depending on the ``ctx``'s configuration,
         this might be different types. see `storage types`_ for more on that.
+
+    :param int index:
+        insert the new node into position ``index`` for the ``base_id/ctx``,
+        rather than at the end of the list
 
     :param iterable flags: any flags to set on the new node
 
@@ -62,7 +66,7 @@ def create(pool, base_id, ctx, value, flags=None, timeout=None):
     flags = util.flags_to_int(ctx, flags or [])
     value = util.storage_wrap(ctx, value)
 
-    node = txn.create_node(pool, base_id, ctx, value, flags, timeout)
+    node = txn.create_node(pool, base_id, ctx, value, index, flags, timeout)
 
     if node is None:
         base_tbl = table.NAMES[util.ctx_tbl(base_ctx)]
@@ -160,7 +164,7 @@ def batch_get(pool, nid_ctx_pairs, timeout=None):
     return results
 
 
-def list_children(pool, base_id, ctx, timeout=None):
+def list_children(pool, base_id, ctx, limit=100, start=0, timeout=None):
     '''list the nodes' guids under a common parent
 
     :param ConnectionPool pool:
@@ -171,12 +175,20 @@ def list_children(pool, base_id, ctx, timeout=None):
 
     :param int ctx: context of the nodes
 
+    :param int limit: maximum number of nodes to return
+
+    :param int start:
+        an integer representing the index in the list of nodes from which to
+        start the results
+
     :param timeout:
         maximum time in seconds that the method is allowed to take; the default
         of ``None`` means no limit
 
     :returns:
-        a list of ints of the guids of the nodes
+        two tuple with a list of ints of the guids of the nodes, and an integer
+        that can be used as ``start`` in subsequent ``list_children`` calls to
+        pick up paging after this result list
 
     :raises BadContext:
         if ``ctx`` isn't a registered context for ``table.NODE``, or
@@ -188,12 +200,15 @@ def list_children(pool, base_id, ctx, timeout=None):
         raise error.BadContext(ctx)
 
     with pool.get_by_guid(base_id, timeout=timeout) as conn:
-        results = query.select_node_guids(conn.cursor(), base_id, ctx)
+        results = query.select_node_guids(
+                conn.cursor(), base_id, limit, start, ctx)
 
-    return [pair[0] for pair in results]
+    end = results[-1][2] + 1 if results else 0
+
+    return [group[0] for group in results], end
 
 
-def get_children(pool, base_id, ctx, timeout=None):
+def get_children(pool, base_id, ctx, limit=100, start=0, timeout=None):
     '''fetch the nodes under a common parent
 
     :param ConnectionPool pool:
@@ -204,13 +219,21 @@ def get_children(pool, base_id, ctx, timeout=None):
 
     :param int ctx: context of the nodes
 
+    :param int limit: maximum number of nodes to return
+
+    :param int start:
+        an integer representing the index in the list of nodes from which to
+        start the results
+
     :param timeout:
         maximum time in seconds that the method is allowed to take; the default
         of ``None`` means no limit
 
     :returns:
-        a list of node dicts, each containing ``guid``, ``ctx``, ``value`` and
-        ``flags`` keys
+        two tuple with a list of node dicts (each containing ``guid``, ``ctx``,
+        ``value`` and ``flags`` keys), and an integer that can be used as
+        ``start`` in subsequent ``get_children`` calls to pick up paging after
+        this result list
 
     :raises BadContext:
         if ``ctx`` isn't a registered context for ``table.NODE``, or
@@ -219,14 +242,14 @@ def get_children(pool, base_id, ctx, timeout=None):
     if timeout is not None:
         deadline = time.time() + timeout
 
-    nids = list_children(pool, base_id, ctx, timeout)
+    nids, pos = list_children(pool, base_id, ctx, limit, start, timeout)
 
     if timeout is not None:
         timeout = deadline - time.time()
 
     nodes = batch_get(pool, [(nid, ctx) for nid in nids], timeout)
 
-    return [node for node in nodes if node is not None]
+    return [node for node in nodes if node is not None], pos
 
 
 def update(pool, node_id, ctx, value, old_value=_missing, timeout=None):
@@ -422,7 +445,39 @@ def clear_flags(pool, node_id, ctx, flags, timeout=None):
     return util.int_to_flags(ctx, result[0])
 
 
-def move(pool, node_id, ctx, base_id, new_base_id, timeout=None):
+def shift(pool, node_id, ctx, base_id, index, timeout=None):
+    '''change the ordered position of a node among its siblings
+
+    :param ConnectionPool pool:
+        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
+        getting a database connection
+
+    :param int node_id: the guid of the node
+
+    :param int ctx: the node's ctx
+
+    :param int base_id: the guid of the node's parent object
+
+    :param int index: the 0-indexed position to which to move the node
+
+    :param timeout:
+        maximum time in seconds that the method is allowed to take; the default
+        of ``None`` means no limit
+
+    :returns:
+        boolean, whether or not the change was applied. it might return
+        ``False`` if there is no node for the given ``node_id/ctx/base_id``
+
+    :raises ReadOnly: if given a read-only pool
+    '''
+    if pool.readonly:
+        raise error.ReadOnly()
+
+    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+        return query.reorder_edge(conn.cursor(), base_id, ctx, node_id, index)
+
+
+def move(pool, node_id, ctx, base_id, new_base_id, index=None, timeout=None):
     '''move a node to underneath a new parent object
 
     :param ConnectionPool pool:
@@ -436,6 +491,10 @@ def move(pool, node_id, ctx, base_id, new_base_id, timeout=None):
     :param int base_id: the guid of the node's current parent object
 
     :param int new_base_id: the guid of the target parent
+
+    :param int index:
+        the position in the nodes under ``new_base_id/ctx`` into which to
+        insert this node, instead of at the end of the list
 
     :param timeout:
         maximum time in seconds that the method is allowed to take; the default
@@ -458,7 +517,7 @@ def move(pool, node_id, ctx, base_id, new_base_id, timeout=None):
         raise error.BadContext(ctx)
 
     return txn.move_node(
-            pool, node_id, ctx, base_id, new_base_id, timeout)
+            pool, node_id, ctx, base_id, new_base_id, index, timeout)
 
 
 def remove(pool, node_id, ctx, base_id, timeout=None):

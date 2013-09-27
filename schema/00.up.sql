@@ -110,9 +110,10 @@ create table edge (
   base_id bigint not null,
   time_removed timestamp default null,
   ctx smallint not null,
-  child_id bigint not null
+  child_id bigint not null,
+  pos int not null
 );
 
 create index edge_idx on edge (
-  base_id, ctx
+  base_id, ctx, pos
 ) where time_removed is null;

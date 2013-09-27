@@ -644,12 +644,13 @@ from (
         and (%s, ctx) in (%s)
 ) as ordering
 where
-    relationship.rel_id = ordering.rel_id
+    relationship.%s = ordering.%s
     and relationship.time_removed is null
     and relationship.forward=%%s
     and (relationship.%s, relationship.ctx) in (%s)
 returning 1
-""" % (anchor_col, data_col, anchor_col, replace, anchor_col, replace),
+""" % (anchor_col, data_col, anchor_col, replace, data_col, data_col,
+            anchor_col, replace),
         ([forward] + flat_pairs) * 2)
 
     return cursor.rowcount
@@ -738,26 +739,50 @@ returning guid
     }
 
 
-def insert_edge(cursor, base_id, ctx, child_id, base_ctx=None):
+def insert_edge(cursor, base_id, ctx, child_id, pos=None, base_ctx=None):
     if base_ctx is None:
-        where = ''
-        params = (base_id, ctx, child_id)
+        where, where_params = 'true', ()
     else:
-        base_tbl = table.NAMES[util.ctx_tbl(base_ctx)]
-        where = '''where exists (
+        where = '''exists(
     select 1 from %s
     where
         time_removed is null
         and guid=%%s
         and ctx=%%s
-)''' % (base_tbl,)
-        params = (base_id, ctx, child_id, base_id, base_ctx)
+)''' % table.NAMES[util.ctx_tbl(base_ctx)]
+        where_params = (base_id, ctx)
 
-    cursor.execute("""
-insert into edge (base_id, ctx, child_id)
-select %%s, %%s, %%s
-%s
-""" % (where,), params)
+    if pos is None:
+        cursor.execute('''
+insert into edge (base_id, ctx, child_id, pos)
+select %%s, %%s, %%s, (
+    select count(*)
+    from edge
+    where
+        time_removed is null
+        and base_id=%%s
+        and ctx=%%s
+)
+where %s
+''' % (where,), (base_id, ctx, child_id, base_id, ctx) + where_params)
+    else:
+        cursor.execute('''
+with bump as (
+    update edge
+    set pos=pos + 1
+    where
+        time_removed is null
+        and base_id=%%s
+        and ctx=%%s
+        and pos >= %%s
+        and %s
+)
+insert into edge (base_id, ctx, child_id, pos)
+select %%s, %%s, %%s, %%s
+where %s
+returning 1
+''' % (where, where), (base_id, ctx, pos) + where_params + (
+            base_id, ctx, child_id, pos) + where_params)
 
     return bool(cursor.rowcount)
 
@@ -810,22 +835,18 @@ where
         } for guid, ctx, flags, num, val in cursor.fetchall()]
 
 
-def select_node_guids(cursor, base_id, ctx=_missing):
-    if ctx is _missing:
-        where_ctx = ""
-        params = (base_id,)
-    else:
-        where_ctx = "and ctx=%s"
-        params = (base_id, ctx)
-
+def select_node_guids(cursor, base_id, limit, pos, ctx):
     cursor.execute("""
-select child_id, ctx
+select child_id, ctx, pos
 from edge
 where
     time_removed is null
-    and base_id=%%s
-    %s
-""" % (where_ctx,), params)
+    and base_id=%s
+    and ctx=%s
+    and pos >= %s
+order by pos asc
+limit %s
+""", (base_id, ctx, pos, limit))
 
     return cursor.fetchall()
 
@@ -893,16 +914,70 @@ returning num
     return cursor.fetchone()[0]
 
 
+def reorder_edge(cursor, base_id, ctx, child_id, pos):
+    cursor.execute("""
+with oldpos as (
+    select pos
+    from edge
+    where
+        time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and child_id=%s
+), bump as (
+    update edge
+    set pos=pos + (case
+        when (select pos from oldpos) < pos
+        then -1
+        else 1
+        end)
+    where
+        exists (select 1 from oldpos)
+        and time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and pos between symmetric (select pos from oldpos) and %s
+), move as (
+    update edge
+    set pos=%s
+    where
+        time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and child_id=%s
+    returning 1
+)
+select exists (select 1 from move)
+""", (base_id, ctx, child_id,
+    base_id, ctx, pos,
+    pos, base_id, ctx, child_id))
+
+    return cursor.fetchone()[0]
+
+
 def remove_edge(cursor, base_id, ctx, child_id):
     cursor.execute("""
-update edge
-set time_removed=now()
-where
-    time_removed is null
-    and base_id=%s
-    and ctx=%s
-    and child_id=%s
-""", (base_id, ctx, child_id))
+with removal as (
+    update edge
+    set time_removed=now()
+    where
+        time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and child_id=%s
+    returning pos
+), bump as (
+    update edge
+    set pos = pos - 1
+    where
+        exists (select 1 from removal)
+        and time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and pos > (select pos from removal)
+)
+select 1 from removal
+""", (base_id, ctx, child_id, base_id, ctx))
 
     return bool(cursor.rowcount)
 
