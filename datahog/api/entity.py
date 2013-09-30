@@ -46,7 +46,7 @@ def create(pool, ctx, flags=None, timeout=None):
 
     flagint = util.flags_to_int(ctx, flags or [])
 
-    with pool.get_random(timeout=timeout) as conn:
+    with pool.get_for_entity_write(timeout=timeout) as conn:
         return {
             'guid': query.insert_entity(conn.cursor(), ctx, flagint),
             'ctx': ctx,

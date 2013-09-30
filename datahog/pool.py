@@ -1,5 +1,6 @@
 # vim: fileencoding=utf8:et:sw=4:ts=8:sts=4
 
+import bisect
 import contextlib
 import Queue
 import random
@@ -56,15 +57,22 @@ class ConnectionPool(object):
             shards, and auto-increments (per shard) up to ``2**56``.
 
         ``alias_insertion_plans``
-            Lists of lists of shard numbers. Initially, the outer list should
-            only contain one sub-list, and this is the list of shard numbers on
-            which aliases should be stored.
+            Lists of lists of two-tuples of shard numbers, and their integer
+            weights.
 
-            When you add shards to your cluster and want to start storing
-            aliases in the new ones (or want to take some shards out of the
-            write pool for new aliases), you must keep the old
-            alias_insertion_plans sub-lists in tact, and add a new plan to the
-            end.
+            Each of these sub-lists is an "insertion plan", and the last plan
+            is always used to calculate the shard on which a new alias will be
+            stored.
+
+            For lookups of alaises inserted by older insertion plans to work,
+            you can never remove or change any insertion plans that made it
+            into production. To change weights or the list of shards being
+            inserted into, append a new plan to the list.
+
+        ``entity_insertion_plan``
+            A list of two-tuples of shard number and weight, used for a
+            weighted random choice of shard for inserting a new entity. This
+            key is optional, the full list of shards will be used by default.
 
     :param bool readonly:
         Whether to disallow data-modifying methods against this connection
@@ -78,6 +86,29 @@ class ConnectionPool(object):
         self._conns = {}
         self._out = {}
         self._ready_evs = []
+
+        self._init_conf()
+
+    def _init_conf(self):
+        conf = self._dbconf
+
+        for key in ('shards', 'shard_bits', 'alias_insertion_plans'):
+            if not conf.get(key, None):
+                raise Exception("missing or empty required key %r" % key)
+
+        for plan in conf['alias_insertion_plans']:
+            _prepare_plan(plan)
+
+        for shard in conf['shards']:
+            for key in ('shard', 'count', 'host', 'port', 'user', 'password',
+                    'database'):
+                if key not in shard:
+                    raise Exception("missing shard dict key %r" % key)
+
+        if 'entity_insertion_plan' not in conf:
+            conf['entity_insertion_plan'] = [(s['shard'], 1)
+                    for s in conf['shards']]
+        _prepare_plan(conf['entity_insertion_plan'])
 
     def start(self):
         '''Initiate the DB connections
@@ -124,22 +155,24 @@ class ConnectionPool(object):
         return guid >> (64 - self._dbconf['shard_bits'])
 
     def shards_for_alias_hash(self, digest):
-        byte = ord(digest[-1])
+        num = _int_hash(digest)
         seen = set()
         for plan in self._dbconf['alias_insertion_plans'][::-1]:
-            shard = plan[byte % len(plan)]
+            shard = _hashpick_from_plan(digest, plan, num)
             if shard in seen:
                 continue
             seen.add(shard)
             yield shard
 
     def shard_for_alias_write(self, digest):
-        byte = ord(digest[-1])
-        plan = self._dbconf['alias_insertion_plans'][-1]
-        return plan[byte % len(plan)]
+        return _hashpick_from_plan(digest,
+                self._dbconf['alias_insertion_plans'][-1])
 
-    def random_shard(self):
-        return random.choice(self._dbconf['shards'])['shard']
+    def shard_for_entity_write(self):
+        plan = self._dbconf['entity_insertion_plan']
+        rand = random.randrange(plan[-1][0])
+        index = bisect.bisect_right(plan, (rand, 99999999999))
+        return plan[index][1]
 
     def get_by_shard(self, shard, replace=True, timeout=None):
         if shard not in self._conns:
@@ -168,8 +201,9 @@ class ConnectionPool(object):
     def get_by_guid(self, guid, replace=True, timeout=None):
         return self.get_by_shard(self.shard_by_guid(guid), replace, timeout)
 
-    def get_random(self, replace=True, timeout=None):
-        return self.get_by_shard(self.random_shard(), replace, timeout)
+    def get_for_entity_write(self, replace=True, timeout=None):
+        return self.get_by_shard(
+                self.shard_for_entity_write(), replace, timeout)
 
     @contextlib.contextmanager
     def _replacement_context(self, conn):
@@ -285,3 +319,24 @@ if gevent:
             super(GeventConnPool, self).start()
 
         _timer = _gevent_timer
+
+
+def _int_hash(digest):
+    n = 0
+    for c in digest:
+        n <<= 8
+        n |= ord(c)
+    return n
+
+def _hashpick_from_plan(digest, plan, num=None):
+    if num is None:
+        num = _int_hash(digest)
+    index = bisect.bisect_right(plan, (num % plan[-1][0], 999999999))
+    return plan[index][1]
+
+# convert a [(shard, weight)] plan to a [(partialsum, shard)] plan
+def _prepare_plan(plan):
+    partial = 0
+    for i, (shard, weight) in enumerate(plan):
+        partial += weight
+        plan[i] = (partial, shard)
