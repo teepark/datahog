@@ -4,23 +4,10 @@ from __future__ import absolute_import
 
 import mummy
 
-from . import table
+from . import storage, table
 
 
 META = {}
-
-STORAGE_NULL = 0
-STORAGE_INT = 1
-STORAGE_STR = 2
-STORAGE_UTF8 = 3
-STORAGE_SER = 4
-STORAGE_TYPES = frozenset([
-    STORAGE_NULL,
-    STORAGE_INT,
-    STORAGE_STR,
-    STORAGE_UTF8,
-    STORAGE_SER
-])
 
 
 def set_context(title, value, tbl, meta=None):
@@ -54,13 +41,12 @@ def set_context(title, value, tbl, meta=None):
 
             storage
                 defines behavior of the int/str storage columns. must be one of
-                ``STORAGE_NULL``, ``STORAGE_INT``, ``STORAGE_STR``,
-                ``STORAGE_SER``. applies when ``tbl`` is ``table.PROPERTY``
-                or ``table.NODE``.
+                ``NULL``, ``INT``, ``STR``, ``UTF8``, ``SERIAL``. applies when
+                ``tbl`` is ``table.PROPERTY`` or ``table.NODE``.
 
             schema
-                in the event of ``'storage': STORAGE_SER``, a schema can be
-                provided, against which values will be validated, and which
+                in the event of ``'storage': SERIAL``, a schema can be provided,
+                against which values will be validated, and which
                 will also be used to further compress values in the db.
     '''
     if title in globals():
@@ -83,7 +69,7 @@ def set_context(title, value, tbl, meta=None):
                 raise ValueError("related %s context %d doesn't exist" %
                         (rel, meta[ctxkey]))
 
-        if meta.get('storage', STORAGE_NULL) not in STORAGE_TYPES:
+        if meta.get('storage', storage.NULL) not in storage.ALL:
             raise ValueError("unrecognized storage type: %d" % meta['storage'])
 
         if 'schema' in meta:

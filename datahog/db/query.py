@@ -2,7 +2,7 @@
 
 from __future__ import absolute_import
 
-from ..const import context, table, util
+from ..const import context, storage, table, util
 
 
 _missing = object() # default argument sentinel
@@ -48,7 +48,7 @@ where
 
 
 def select_property(cursor, base_id, ctx):
-    if util.ctx_storage(ctx) == context.STORAGE_INT:
+    if util.ctx_storage(ctx) == storage.INT:
         val_field = 'num'
     else:
         val_field = 'value'
@@ -83,7 +83,7 @@ where
             'base_id': base_id,
             'ctx': ctx,
             'flags': flags,
-            'value': (num if util.ctx_storage(ctx) == context.STORAGE_INT
+            'value': (num if util.ctx_storage(ctx) == storage.INT
                     else value),
         } for ctx, num, value, flags in cursor.fetchall()}
 
@@ -91,7 +91,7 @@ where
 
 
 def upsert_property(cursor, base_id, ctx, value, flags):
-    if util.ctx_storage(ctx) == context.STORAGE_INT:
+    if util.ctx_storage(ctx) == storage.INT:
         val_field = 'num'
         other_field = 'value'
     else:
@@ -138,7 +138,7 @@ select
 
 
 def update_property(cursor, base_id, ctx, value):
-    if util.ctx_storage(ctx) == context.STORAGE_INT:
+    if util.ctx_storage(ctx) == storage.INT:
         val_field = 'num'
         other_field = 'value'
     else:
@@ -195,7 +195,7 @@ def remove_property(cursor, base_id, ctx, value=_missing):
     if value is _missing:
         where_value, params = "", (base_id, ctx)
     else:
-        if util.ctx_storage(ctx) == context.STORAGE_INT:
+        if util.ctx_storage(ctx) == storage.INT:
             where_value = "and num=%s"
             params = (base_id, ctx, value)
         elif value is None:
@@ -728,7 +728,7 @@ select exists (select 1 from move)
 
 
 def insert_node(cursor, base_id, ctx, value, flags):
-    if util.ctx_storage(ctx) == context.STORAGE_INT:
+    if util.ctx_storage(ctx) == storage.INT:
         val_field = 'num'
     else:
         val_field = 'value'
@@ -809,7 +809,7 @@ returning 1
 
 
 def select_node(cursor, nid, ctx):
-    if util.ctx_storage(ctx) == context.STORAGE_INT:
+    if util.ctx_storage(ctx) == storage.INT:
         val_field = 'num'
     else:
         val_field = 'value'
@@ -852,7 +852,7 @@ where
         'guid': guid,
         'ctx': ctx,
         'flags': flags,
-        'value': num if util.ctx_storage(ctx) == context.STORAGE_INT else val,
+        'value': num if util.ctx_storage(ctx) == storage.INT else val,
         } for guid, ctx, flags, num, val in cursor.fetchall()]
 
 
@@ -873,7 +873,7 @@ limit %s
 
 
 def update_node(cursor, nid, ctx, value, old_value=_missing):
-    int_storage = util.ctx_storage(ctx) == context.STORAGE_INT
+    int_storage = util.ctx_storage(ctx) == storage.INT
     if int_storage:
         val_field = 'num'
         other_field = 'value'

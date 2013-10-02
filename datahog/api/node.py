@@ -5,7 +5,7 @@ from __future__ import absolute_import
 import time
 
 from .. import error
-from ..const import context, table, util
+from ..const import context, storage, table, util
 from ..db import query, txn
 
 
@@ -330,14 +330,14 @@ def increment(pool, node_id, ctx, by=1, limit=None, timeout=None):
     :raises ReadOnly: if the provided pool is read-only
 
     :raises StorageClassError:
-        if the ``ctx`` doesn't have a ``storage`` of STORAGE_INT
+        if the ``ctx`` doesn't have a ``storage`` of INT
     '''
     if pool.readonly:
         raise error.ReadOnly()
 
-    if util.ctx_storage(ctx) != context.STORAGE_INT:
+    if util.ctx_storage(ctx) != storage.INT:
         raise error.StorageClassError(
-            'cannot increment a ctx that is not configured for STORAGE_INT')
+            'cannot increment a ctx that is not configured for INT')
 
     with pool.get_by_guid(node_id, timeout=timeout) as conn:
         if limit is None:

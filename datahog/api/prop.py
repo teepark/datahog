@@ -168,14 +168,14 @@ def increment(pool, base_id, ctx, by=1, limit=None, timeout=None):
     :raises ReadOnly: if the provided pool is read-only
 
     :raises StorageClassError:
-        if the ``ctx`` doesn't have a ``storage`` of STORAGE_INT
+        if the ``ctx`` doesn't have a ``storage`` of INT
     '''
     if pool.readonly:
         raise error.ReadOnly()
 
-    if util.ctx_storage(ctx) != context.STORAGE_INT:
+    if util.ctx_storage(ctx) != context.INT:
         raise error.StorageClassError(
-            'cannot increment a ctx that is not configured for STORAGE_INT')
+            'cannot increment a ctx that is not configured for INT')
 
     with pool.get_by_guid(base_id, timeout=timeout) as conn:
         if limit is None:

@@ -4,7 +4,7 @@ from __future__ import absolute_import
 
 import mummy
 
-from . import context, flag, table
+from . import context, flag, storage, table
 from .. import error
 
 
@@ -105,39 +105,39 @@ def int_to_flags(ctx, flag_num):
 def storage_wrap(ctx, value):
     st = ctx_storage(ctx)
 
-    if st == context.STORAGE_NULL:
+    if st == storage.NULL:
         if value is not None:
-            raise error.StorageClassError("STORAGE_NULL requires None")
+            raise error.StorageClassError("NULL requires None")
         return None
 
-    if st == context.STORAGE_INT:
+    if st == storage.INT:
         if not isinstance(value, (int, long)):
-            raise error.StorageClassError("STORAGE_INT requires int or long")
+            raise error.StorageClassError("INT requires int or long")
         return value
 
-    if st == context.STORAGE_STR:
+    if st == storage.STR:
         if not isinstance(value, str):
-            raise error.StorageClassError("STORAGE_STR requires str")
+            raise error.StorageClassError("STR requires str")
         return value
 
-    if st == context.STORAGE_UTF8:
+    if st == storage.UTF8:
         if not isinstance(value, unicode):
-            raise error.StorageClassError("STORAGE_UTF8 requires unicode")
+            raise error.StorageClassError("UTF8 requires unicode")
         return value.encode("utf8")
 
-    if st == context.STORAGE_SER:
+    if st == storage.SERIAL:
         schema = ctx_schema(ctx)
         if schema:
             try:
                 return schema(value).dumps()
             except schema.InvalidMessage:
                 raise error.StorageClassError(
-                        "STORAGE_SER schema validation failed")
+                        "SERIAL schema validation failed")
         try:
             return mummy.dumps(value)
         except TypeError:
             raise error.StorageClassError(
-                    "STORAGE_SER requires a serializable value")
+                    "SERIAL requires a serializable value")
 
 
     raise error.BadContext(ctx)
@@ -148,10 +148,10 @@ def storage_unwrap(ctx, value):
     if st is None:
         raise error.BadContext(ctx)
 
-    if st == context.STORAGE_UTF8:
+    if st == storage.UTF8:
         return st.decode("utf8")
 
-    if st == context.STORAGE_SER:
+    if st == storage.SER:
         schema = ctx_schema(ctx)
         if schema:
             return schema.untransform(mummy.loads(value))
