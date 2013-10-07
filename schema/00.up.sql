@@ -90,7 +90,7 @@ create index relationship_backward_idx on relationship (
 ) where time_removed is null and forward=false;
 
 
--- TREE --
+-- NODES --
 
 create table node (
   guid bigint not null default nextval('guids'),
@@ -116,4 +116,38 @@ create table edge (
 
 create index edge_idx on edge (
   base_id, ctx, pos
+) where time_removed is null;
+
+
+-- NAMES --
+
+create table name (
+  base_id bigint not null,
+  flags smallint default 0 not null,
+  time_removed timestamp default null,
+  ctx smallint not null,
+  pos int not null,
+  value varchar(255) not null
+);
+
+create index name_idx on name (
+  base_id, ctx, pos
+) where time_removed is null;
+
+create unique index name_uniq on name (
+  base_id, ctx, value
+) where time_removed is null;
+-- TODO: is this index a great idea? I don't see that this gives us any
+--       better lookups than name_idx, it's only here to enforce uniqueness
+
+create table prefix_lookup (
+  value varchar(255) not null,
+  flags smallint default 0 not null,
+  time_removed timestamp default null,
+  ctx smallint not null,
+  base_id bigint not null
+);
+
+create index prefix_lookup_idx on prefix_lookup (
+  ctx, value
 ) where time_removed is null;
