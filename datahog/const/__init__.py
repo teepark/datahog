@@ -2,10 +2,10 @@
 
 from __future__ import absolute_import
 
-from . import context, flag, table
+from . import context, flag, search, storage, table
 
 
-__all__ = ['context', 'flag', 'table', 'set_context', 'set_flag']
+__all__ = ['context', 'flag', 'search', 'storage', 'table', 'set_context', 'set_flag']
 
 
 set_context = context.set_context

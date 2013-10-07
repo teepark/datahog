@@ -95,6 +95,7 @@ def lookup(pool, value, ctx, timeout=None):
     if result is not None:
         # we selected on alias_lookup, which doesn't store the value
         result['value'] = value
+        result['flags'] = util.int_to_flags(ctx, result['flags'])
 
     return result
 
@@ -127,7 +128,7 @@ def list(pool, base_id, ctx, limit=100, start=0, timeout=None):
         end of this result list.
     '''
     with pool.get_by_guid(base_id, timeout=timeout) as conn:
-        results, prev_exists = query.select_aliases(
+        results = query.select_aliases(
                 conn.cursor(), base_id, ctx, limit, start)
 
     pos = 0

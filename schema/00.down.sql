@@ -1,3 +1,5 @@
+drop table prefix_lookup;
+drop table name;
 drop table edge;
 drop table node;
 drop table relationship;

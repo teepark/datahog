@@ -2,6 +2,10 @@
 
 from __future__ import absolute_import
 
+from .. import error
+from ..const import search as searchconst, table, util
+from ..db import txn
+
 
 def create(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
     '''store a name on a guid object
@@ -41,6 +45,15 @@ def create(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
         if anything in ``flags`` is not a registered flag associated with
         ``ctx``
     '''
+    if pool.readonly:
+        raise error.ReadOnly()
+
+    if util.ctx_tbl(ctx) != table.NAME:
+        raise error.BadContext(ctx)
+
+    flags = util.flags_to_int(ctx, flags or [])
+
+    return txn.create_name(pool, base_id, ctx, value, flags, index, timeout)
 
 
 def search(pool, value, ctx, limit=100, start=None, timeout=None):
@@ -72,6 +85,15 @@ def search(pool, value, ctx, limit=100, start=None, timeout=None):
         be used as the value of ``start`` in subsequent calls to continue
         paging from the end of this result list
     '''
+    if util.ctx_search(ctx) is None:
+        raise error.BadContext(ctx)
+
+    results = txn.search_names(pool, value, ctx, limit, start, timeout)
+
+    for result in results:
+        result['flags'] = util.int_to_flags(ctx, result['flags'])
+
+    return results, _token_for_searchlist(ctx, results)
 
 
 def list(pool, guid, ctx, limit=100, start=0, timeout=None):
@@ -221,3 +243,16 @@ def remove(pool, base_id, ctx, value, timeout=None):
 
     :raises ReadOnly: if given a read-only ``pool``
     '''
+
+
+def _token_for_searchlist(ctx, results):
+    if not results:
+        return None
+
+    sclass = util.ctx_search(ctx)
+
+    if sclass == searchconst.PREFIX:
+        return results[-1]['value']
+
+    if sclass is None:
+        raise error.BadContext(ctx)

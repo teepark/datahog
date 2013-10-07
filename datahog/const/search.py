@@ -2,4 +2,4 @@
 
 PREFIX = 1
 
-ALL = frozenset([ALL])
+ALL = frozenset([PREFIX])

@@ -41,7 +41,7 @@ def set_context(title, value, tbl, meta=None):
 
             storage
                 defines behavior of the int/str storage columns. must be one of
-                ``NULL``, ``INT``, ``STR``, ``UTF8``, ``SERIAL``. applies when
+                ``NULL``, ``INT``, ``STR``, ``UTF``, ``SERIAL``. applies when
                 ``tbl`` is ``table.PROPERTY`` or ``table.NODE``.
 
             schema

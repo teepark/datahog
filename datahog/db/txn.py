@@ -13,7 +13,7 @@ import psycopg2.extensions
 
 from . import query
 from .. import error
-from ..const import table, util
+from ..const import search, table, util
 
 
 class TwoPhaseCommit(object):
@@ -153,7 +153,7 @@ def lookup_alias(pool, digest, ctx, timeout):
         return _lookup_alias(pool, digest, ctx, timer)
 
 def _lookup_alias(pool, digest, ctx, timer):
-    for shard in pool.shards_for_alias_hash(digest):
+    for shard in pool.shards_for_lookup_hash(digest):
         conn = pool.get_by_shard(shard, replace=False)
         timer.conn = conn
         try:
@@ -183,7 +183,7 @@ def _set_alias(pool, base_id, ctx, alias, flags, index, timer):
     # look up pre-existing aliases on any but the current insert shard
     insert_shard = pool.shard_for_alias_write(digest)
     owner = None
-    for shard in pool.shards_for_alias_hash(digest):
+    for shard in pool.shards_for_lookup_hash(digest):
         if shard == insert_shard:
             continue
 
@@ -265,7 +265,7 @@ def _add_alias_flags(pool, base_id, ctx, alias, flags, timer):
     digest = hashlib.sha1(alias).digest()
     digest_b64 = digest.encode('base64').strip()
 
-    for shard in pool.shards_for_alias_hash(digest):
+    for shard in pool.shards_for_lookup_hash(digest):
         with pool.get_by_shard(shard) as conn:
             timer.conn = conn
             try:
@@ -329,7 +329,7 @@ def _clear_alias_flags(pool, base_id, ctx, alias, flags, timer):
     digest = hashlib.sha1(alias).digest()
     digest_b64 = digest.encode('base64').strip()
 
-    for shard in pool.shards_for_alias_hash(digest):
+    for shard in pool.shards_for_lookup_hash(digest):
         with pool.get_by_shard(shard) as conn:
             timer.conn = conn
             try:
@@ -396,7 +396,7 @@ def _remove_alias(pool, base_id, ctx, alias, timer):
     digest = hashlib.sha1(alias).digest()
     digest_b64 = digest.encode('base64').strip()
 
-    for shard in pool.shards_for_alias_hash(digest):
+    for shard in pool.shards_for_lookup_hash(digest):
         with pool.get_by_shard(shard) as conn:
             timer.conn = conn
             try:
@@ -712,6 +712,96 @@ def _move_node(pool, node_id, ctx, base_id, new_base_id, timer):
     return True
 
 
+def create_name(pool, base_id, ctx, value, flags, index, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _create_name(pool, base_id, ctx, value, flags, index, timer)
+    with timer:
+        return _create_name(pool, base_id, ctx, value, flags, index, timer)
+
+def _create_name(pool, base_id, ctx, value, flags, index, timer):
+    base_ctx = util.ctx_base_ctx(ctx)
+
+    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'create_name',
+            (base_id, ctx, value, flags, index))
+    try:
+        with tpc as conn:
+            timer.conn = conn
+            inserted = query.insert_name(
+                    conn.cursor(), base_id, ctx, value, flags, index)
+
+            if not inserted:
+                tpc.fail()
+                return False
+
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        return False
+
+    finally:
+        pool.put(conn)
+        timer.conn = None
+
+    with tpc.elsewhere():
+        inserted = _write_name_lookup(
+                pool, tpc, base_id, ctx, value, flags, timer)
+
+    return True
+
+
+def _write_name_lookup(pool, tpc, base_id, ctx, value, flags, timer):
+    sclass = util.ctx_search(ctx)
+
+    if sclass == search.PREFIX:
+        return _write_prefix_lookup(pool, base_id, ctx, value, flags, timer)
+
+    if sclass is None:
+        raise error.BadContext(ctx)
+
+
+def _write_prefix_lookup(pool, base_id, ctx, value, flags, timer):
+    try:
+        with pool.get_by_shard(pool.shard_for_prefix_write(value)) as conn:
+            timer.conn = conn
+            return query.insert_prefix_lookup(
+                    conn.cursor(), value, flags, ctx, base_id)
+    finally:
+        timer.conn = None
+
+
+def search_names(pool, value, ctx, limit, start, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _search_names(pool, value, ctx, limit, start, timer)
+    with timer:
+        return _search_names(pool, value, ctx, limit, start, timer)
+
+
+def _search_names(pool, value, ctx, limit, start, timer):
+    sclass = util.ctx_search(ctx)
+
+    if sclass == search.PREFIX:
+        return _search_prefix(pool, value, ctx, limit, start, timer)
+
+    
+def _search_prefix(pool, value, ctx, limit, start, timer):
+    if start is None:
+        start = ''
+
+    names = []
+    for shard in pool.shards_for_lookup_prefix(value):
+        with pool.get_by_shard(shard) as conn:
+            try:
+                timer.conn = conn
+                names.extend(query.search_prefixes(
+                    conn.cursor(), value, ctx, limit, start))
+            finally:
+                timer.conn = None
+
+    names.sort(key=lambda name: name['value'])
+    return names[:limit]
+
+
 def _remove_local_estates(shard, pool, cursor, estate, first_round=True):
     alias_lookups, rels, guids = estate[shard]
     guids = guids[:]
@@ -726,7 +816,7 @@ def _remove_local_estates(shard, pool, cursor, estate, first_round=True):
         for value, ctx in aliases:
             # add each alias_lookup to every shard it *might* live on
             digest = hashlib.sha1(value).digest()
-            for s in pool.shards_for_alias_hash(digest):
+            for s in pool.shards_for_lookup_hash(digest):
                 estate.setdefault(s, (set(), [], []))[0].add((value, ctx))
 
         removed_rels = query.remove_relationships_multiple_bases(cursor, guids)
@@ -751,7 +841,7 @@ def _remove_local_estates(shard, pool, cursor, estate, first_round=True):
     if alias_lookups:
         removed = query.remove_alias_lookups_multi(cursor, list(alias_lookups))
         for pair in removed:
-            for s in pool.shards_for_alias_hash(pair[0]):
+            for s in pool.shards_for_lookup_hash(pair[0]):
                 if s == shard:
                     continue
                 estate[s][0].discard(pair)

@@ -56,18 +56,19 @@ class ConnectionPool(object):
             reserve for shard number. 8 is a good value -- allows for up to 256
             shards, and auto-increments (per shard) up to ``2**56``.
 
-        ``alias_insertion_plans``
+        ``lookup_insertion_plans``
             Lists of lists of two-tuples of shard numbers, and their integer
-            weights.
+            weights. This is used for the associated lookup tables of aliases
+            and names.
 
             Each of these sub-lists is an "insertion plan", and the last plan
-            is always used to calculate the shard on which a new alias will be
-            stored.
+            is always used to calculate the shard on which a new lookup table
+            row will be stored.
 
-            For lookups of alaises inserted by older insertion plans to work,
-            you can never remove or change any insertion plans that made it
-            into production. To change weights or the list of shards being
-            inserted into, append a new plan to the list.
+            For lookups inserted by older insertion plans to work, you can
+            never remove or change any insertion plans that made it into
+            production. To change weights or the list of shards being inserted
+            into, append a new plan to the list.
 
         ``entity_insertion_plan``
             A list of two-tuples of shard number and weight, used for a
@@ -92,11 +93,11 @@ class ConnectionPool(object):
     def _init_conf(self):
         conf = self._dbconf
 
-        for key in ('shards', 'shard_bits', 'alias_insertion_plans'):
+        for key in ('shards', 'shard_bits', 'lookup_insertion_plans'):
             if not conf.get(key, None):
                 raise Exception("missing or empty required key %r" % key)
 
-        for plan in conf['alias_insertion_plans']:
+        for plan in conf['lookup_insertion_plans']:
             _prepare_plan(plan)
 
         for shard in conf['shards']:
@@ -154,19 +155,33 @@ class ConnectionPool(object):
     def shard_by_guid(self, guid):
         return guid >> (64 - self._dbconf['shard_bits'])
 
-    def shards_for_alias_hash(self, digest):
+    def shards_for_lookup_hash(self, digest):
         num = _int_hash(digest)
         seen = set()
-        for plan in self._dbconf['alias_insertion_plans'][::-1]:
-            shard = _hashpick_from_plan(digest, plan, num)
+        for plan in self._dbconf['lookup_insertion_plans'][::-1]:
+            shard = _pick_from_plan(digest, plan, num)
+            if shard in seen:
+                continue
+            seen.add(shard)
+            yield shard
+
+    def shards_for_lookup_prefix(self, value):
+        num = ord(value[0])
+        seen = set()
+        for plan in self._dbconf['lookup_insertion_plans'][::-1]:
+            shard = _pick_from_plan(None, plan, num)
             if shard in seen:
                 continue
             seen.add(shard)
             yield shard
 
     def shard_for_alias_write(self, digest):
-        return _hashpick_from_plan(digest,
-                self._dbconf['alias_insertion_plans'][-1])
+        return _pick_from_plan(digest,
+                self._dbconf['lookup_insertion_plans'][-1])
+
+    def shard_for_prefix_write(self, value):
+        return _pick_from_plan(None,
+                self._dbconf['lookup_insertion_plans'][-1], ord(value[0]))
 
     def shard_for_entity_write(self):
         plan = self._dbconf['entity_insertion_plan']
@@ -328,7 +343,7 @@ def _int_hash(digest):
         n |= ord(c)
     return n
 
-def _hashpick_from_plan(digest, plan, num=None):
+def _pick_from_plan(digest, plan, num=None):
     if num is None:
         num = _int_hash(digest)
     index = bisect.bisect_right(plan, (num % plan[-1][0], 999999999))

@@ -73,6 +73,12 @@ def ctx_schema(ctx):
     return meta and meta[2].get('schema')
 
 
+def ctx_search(ctx):
+    "return the search class for a context (if present)"
+    meta = context.META.get(ctx)
+    return meta and meta[2].get('search')
+
+
 def flags_to_int(ctx, flag_list):
     "convert an iterable of flag consts to a single bitmap integer"
     if ctx not in context.META:
@@ -120,9 +126,9 @@ def storage_wrap(ctx, value):
             raise error.StorageClassError("STR requires str")
         return value
 
-    if st == storage.UTF8:
+    if st == storage.UTF:
         if not isinstance(value, unicode):
-            raise error.StorageClassError("UTF8 requires unicode")
+            raise error.StorageClassError("UTF storage requires unicode")
         return value.encode("utf8")
 
     if st == storage.SERIAL:
@@ -148,10 +154,10 @@ def storage_unwrap(ctx, value):
     if st is None:
         raise error.BadContext(ctx)
 
-    if st == storage.UTF8:
+    if st == storage.UTF:
         return st.decode("utf8")
 
-    if st == storage.SER:
+    if st == storage.SERIAL:
         schema = ctx_schema(ctx)
         if schema:
             return schema.untransform(mummy.loads(value))

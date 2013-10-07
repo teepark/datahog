@@ -271,7 +271,7 @@ limit %s
             'ctx': ctx,
             'pos': pos,
             'value': value
-        } for flags, value, pos in cursor.fetchall()], True
+        } for flags, value, pos in cursor.fetchall()]
 
 
 def maybe_insert_alias_lookup(cursor, digest, ctx, base_id, flags):
@@ -325,28 +325,30 @@ where exists (
             (base_id, ctx, value, base_id, ctx, flags, base_id, base_ctx))
     else:
         cursor.execute("""
-with increment as (
+with existence as (
+    select 1 from %s
+    where
+        time_removed is null
+        and guid=%%s
+        and ctx=%%s
+), increment as (
 update alias
 set pos = pos + 1
 where
-    time_removed is null
+    exists (select 1 from existence)
+    and time_removed is null
     and base_id=%%s
     and ctx=%%s
     and pos >= %%s
 )
 insert into alias (base_id, ctx, value, pos, flags)
 select %%s, %%s, %%s, %%s, %%s
-where exists(
-    select 1 from %s
-    where
-        time_removed is null
-        and guid=%%s
-        and ctx=%%s
-)
+where exists (select 1 from existence)
 returning 1
-""" % (base_tbl,),
-            (base_id, ctx, index, base_id, ctx, value, index, flags,
-                base_id, base_ctx))
+""" % (base_tbl,), (
+            base_id, base_ctx,
+            base_id, ctx, index,
+            base_id, ctx, value, index, flags))
 
     return bool(cursor.rowcount)
 
@@ -482,15 +484,14 @@ select %%s, %%s, %%s, %%s, (
         and ctx=%%s
         and forward=%%s
 ), %%s
-where
-    exists (
-        select 1
-        from %s
-        where
-            time_removed is null
-            and guid=%%s
-            and ctx=%%s
-    )
+where exists (
+    select 1
+    from %s
+    where
+        time_removed is null
+        and guid=%%s
+        and ctx=%%s
+)
 returning 1
 """ % (guid_col, guid_tbl), (
         base_id, rel_id, ctx, forward,
@@ -1040,6 +1041,90 @@ returning guid
 """ % (','.join('%s' for n in nodes),), nodes)
 
     return [r[0] for r in cursor.fetchall()]
+
+
+def insert_name(cursor, base_id, ctx, value, flags, index):
+    base_tbl, base_ctx = util.ctx_base(ctx)
+    base_tbl = table.NAMES[base_tbl]
+
+    if index is None:
+        cursor.execute("""
+insert into name (base_id, ctx, value, flags, pos)
+select %%s, %%s, %%s, %%s, (
+    select count(*)
+    from name
+    where
+        time_removed is null
+        and base_id=%%s
+        and ctx=%%s
+)
+where exists (
+    select 1 from %s
+    where
+        time_removed is null
+        and guid=%%s
+        and ctx=%%s
+)
+""" % (base_tbl,), (
+            base_id, ctx, value, flags,
+            base_id, ctx,
+            base_id, base_ctx))
+    else:
+        cursor.execute("""
+with existence as (
+    select 1 from %s
+    where
+        time_removed is null
+        and guid=%%s
+        and ctx=%%s
+), increment as (
+update name
+set pos = pos + 1
+where
+    exists (select 1 from existence)
+    and time_removed is null
+    and base_id=%%s
+    and ctx=%%s
+    and pos >= %%s
+)
+insert into name (base_id, ctx, value, flags, pos)
+select %%s, %%s, %%s, %%s, %%s
+where exists (select 1 from existence)
+returning 1
+""" % (base_tbl,), (
+            base_id, base_ctx,
+            base_id, ctx, index,
+            base_id, ctx, value, flags, index))
+
+    return cursor.rowcount
+
+
+def insert_prefix_lookup(cursor, value, flags, ctx, base_id):
+    cursor.execute("""
+insert into prefix_lookup (value, flags, ctx, base_id)
+values (%s, %s, %s, %s)
+""", (value, flags, ctx, base_id))
+
+
+def search_prefixes(cursor, value, ctx, limit, start):
+    cursor.execute("""
+select base_id, flags, value
+from prefix_lookup
+where
+    time_removed is null
+    and ctx=%s
+    and value like %s || '%%'
+    and value > %s
+order by value
+limit %s
+""", (ctx, value, start, limit))
+
+    return [{
+            'base_id': base_id,
+            'flags': flags,
+            'value': value,
+            'ctx': ctx,
+        } for base_id, flags, value in cursor.fetchall()]
 
 
 def add_flags(cursor, table, flags, where):

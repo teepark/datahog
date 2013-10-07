@@ -3,7 +3,7 @@
 NULL = 0
 INT = 1
 STR = 2
-UTF8 = 3
+UTF = 3
 SERIAL = 4
 
-ALL = frozenset([NULL, INT, STR, UTF, SER])
+ALL = frozenset([NULL, INT, STR, UTF, SERIAL])
