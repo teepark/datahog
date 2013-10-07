@@ -4,7 +4,7 @@ from __future__ import absolute_import
 
 from .. import error
 from ..const import search as searchconst, table, util
-from ..db import txn
+from ..db import query, txn
 
 
 def create(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
@@ -83,7 +83,8 @@ def search(pool, value, ctx, limit=100, start=None, timeout=None):
         a two-tuple with a list of name dicts (each containing ``base_id``,
         ``ctx``, ``value``, and ``flags`` keys), and a ``page_token`` that can
         be used as the value of ``start`` in subsequent calls to continue
-        paging from the end of this result list
+        paging from the end of this result list. the result list will be in
+        sorted order of the string name values.
     '''
     if util.ctx_search(ctx) is None:
         raise error.BadContext(ctx)
@@ -96,14 +97,14 @@ def search(pool, value, ctx, limit=100, start=None, timeout=None):
     return results, _token_for_searchlist(ctx, results)
 
 
-def list(pool, guid, ctx, limit=100, start=0, timeout=None):
+def list(pool, base_id, ctx, limit=100, start=0, timeout=None):
     '''list the names under a guid object for a given context
 
     :param ConnetionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int guid: guid of the parent object to search under
+    :param int base_id: guid of the parent object to search under
 
     :param int ctx: context of the names to list
 
@@ -123,6 +124,15 @@ def list(pool, guid, ctx, limit=100, start=0, timeout=None):
         be used as the value of ``start`` in subsequent calls, to continue
         paging from the end of this result list
     '''
+    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+        results = query.select_names(conn.cursor(), base_id, ctx, limit, start)
+
+    pos = -1
+    for result in results:
+        result['flags'] = util.int_to_flags(ctx, result['flags'])
+        pos = result.pop('pos')
+
+    return results, pos + 1
 
 
 def add_flags(pool, base_id, ctx, value, flags, timeout=None):

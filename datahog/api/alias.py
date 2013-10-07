@@ -131,12 +131,12 @@ def list(pool, base_id, ctx, limit=100, start=0, timeout=None):
         results = query.select_aliases(
                 conn.cursor(), base_id, ctx, limit, start)
 
-    pos = 0
+    pos = -1
     for result in results:
         result['flags'] = util.int_to_flags(ctx, result['flags'])
-        pos = result.pop('pos') + 1
+        pos = result.pop('pos')
 
-    return results, pos
+    return results, pos + 1
 
 
 def add_flags(pool, base_id, ctx, value, flags, timeout=None):

@@ -1106,6 +1106,28 @@ values (%s, %s, %s, %s)
 """, (value, flags, ctx, base_id))
 
 
+def select_names(cursor, base_id, ctx, limit, start):
+    cursor.execute("""
+select flags, value, pos
+from name
+where
+    time_removed is null
+    and base_id=%s
+    and ctx=%s
+    and pos >= %s
+order by pos asc
+limit %s
+""", (base_id, ctx, start, limit))
+
+    return [{
+            'base_id': base_id,
+            'flags': flags,
+            'ctx': ctx,
+            'pos': pos,
+            'value': value
+        } for flags, value, pos in cursor.fetchall()]
+
+
 def search_prefixes(cursor, value, ctx, limit, start):
     cursor.execute("""
 select base_id, flags, value
