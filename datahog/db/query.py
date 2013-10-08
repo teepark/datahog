@@ -1124,8 +1124,34 @@ limit %s
             'flags': flags,
             'ctx': ctx,
             'pos': pos,
-            'value': value
+            'value': value,
         } for flags, value, pos in cursor.fetchall()]
+
+
+def select_prefix_lookups(cursor, value, ctx, base_id=None):
+    if base_id is None:
+        bid_where = ""
+        params = (ctx, value)
+    else:
+        bid_where = "and base_id=%s"
+        params = (ctx, value, base_id)
+
+    cursor.execute("""
+select base_id, flags
+from prefix_lookup
+where
+    time_removed is null
+    and ctx=%%s
+    and value=%%s
+    %s
+""" % (bid_where,), params)
+
+    return [{
+            'base_id': base_id,
+            'flags': flags,
+            'ctx': ctx,
+            'value': value,
+        } for base_id, flags in cursor.fetchall()]
 
 
 def search_prefixes(cursor, value, ctx, limit, start):

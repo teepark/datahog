@@ -167,6 +167,20 @@ def add_flags(pool, base_id, ctx, value, flags, timeout=None):
         if ``flags`` contains something that is not a registered flag
         associated with ``ctx``
     '''
+    if pool.readonly:
+        raise error.ReadOnly()
+
+    if util.ctx_tbl(ctx) != table.NAME:
+        raise error.BadContext(ctx)
+
+    flags = util.flags_to_int(ctx, flags)
+
+    result = txn.add_name_flags(pool, base_id, ctx, value, flags, timeout)
+
+    if result is None:
+        return None
+
+    return util.int_to_flags(ctx, result)
 
 
 def clear_flags(pool, base_id, ctx, value, flags, timeout=None):
@@ -201,6 +215,20 @@ def clear_flags(pool, base_id, ctx, value, flags, timeout=None):
         if ``flags`` contains something that is not a registered flag
         associated with ``ctx``
     '''
+    if pool.readonly:
+        raise error.ReadOnly()
+
+    if util.ctx_tbl(ctx) != table.NAME:
+        raise error.BadContext(ctx)
+
+    flags = util.flags_to_int(ctx, flags)
+
+    result = txn.clear_name_flags(pool, base_id, ctx, value, flags, timeout)
+
+    if result is None:
+        return None
+
+    return util.int_to_flags(ctx, result)
 
 
 def shift(pool, base_id, ctx, value, index, timeout=None):

@@ -783,7 +783,7 @@ def _search_names(pool, value, ctx, limit, start, timer):
     if sclass == search.PREFIX:
         return _search_prefix(pool, value, ctx, limit, start, timer)
 
-    
+
 def _search_prefix(pool, value, ctx, limit, start, timer):
     if start is None:
         start = ''
@@ -800,6 +800,137 @@ def _search_prefix(pool, value, ctx, limit, start, timer):
 
     names.sort(key=lambda name: name['value'])
     return names[:limit]
+
+
+def add_name_flags(pool, base_id, ctx, value, flags, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _add_name_flags(pool, base_id, ctx, value, flags, timer)
+    with timer:
+        return _add_name_flags(pool, base_id, ctx, value, flags, timer)
+
+
+def _add_name_flags(pool, base_id, ctx, value, flags, timer):
+    lookup_shard = _find_name_lookup_shard(pool, base_id, ctx, value, timer)
+    if lookup_shard is None:
+        return None
+
+    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'add_name_flags',
+            (base_id, ctx, value, flags))
+
+    try:
+        with tpc as conn:
+            timer.conn = conn
+            result = query.add_flags(conn.cursor(), 'name', flags,
+                    {'base_id': base_id, 'ctx': ctx, 'value': value})
+            if not result:
+                tpc.fail()
+                return None
+
+    finally:
+        pool.put(conn)
+        timer.conn = None
+
+    result_flags = result[0]
+
+    with tpc.elsewhere():
+        if not _apply_flags_to_lookup(pool, lookup_shard, query.add_flags,
+                flags, base_id, ctx, value, timer, result_flags):
+            return None
+
+    return result_flags
+
+
+def clear_name_flags(pool, base_id, ctx, value, flags, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _clear_name_flags(pool, base_id, ctx, value, flags, timer)
+    with timer:
+        return _clear_name_flags(pool, base_id, ctx, value, flags, timer)
+
+
+def _clear_name_flags(pool, base_id, ctx, value, flags, timer):
+    lookup_shard = _find_name_lookup_shard(pool, base_id, ctx, value, timer)
+    if lookup_shard is None:
+        return None
+
+    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'clear_name_flags',
+            (base_id, ctx, value, flags))
+
+    try:
+        with tpc as conn:
+            timer.conn = conn
+            result = query.clear_flags(conn.cursor(), 'name', flags,
+                    {'base_id': base_id, 'ctx': ctx, 'value': value})
+            if not result:
+                tpc.fail()
+                return None
+
+    finally:
+        pool.put(conn)
+        timer.conn = None
+
+    result_flags = result[0]
+
+    with tpc.elsewhere():
+        if not _apply_flags_to_lookup(pool, lookup_shard, query.clear_flags,
+                flags, base_id, ctx, value, timer, result_flags):
+            return None
+
+    return result_flags
+
+
+def _find_name_lookup_shard(pool, base_id, ctx, value, timer):
+    sclass = util.base_search(ctx)
+
+    if sclass == search.PREFIX:
+        return _find_prefix_lookup_shard(pool, base_id, ctx, value, timer)
+
+    raise error.BadContext(ctx)
+
+
+def _find_prefix_lookup_shard(pool, base_id, ctx, value, timer):
+    for shard in pool.shards_for_lookup_prefix(value):
+        with pool.get_by_shard(shard) as conn:
+            try:
+                timer.conn = conn
+                if query.select_prefix_lookups(
+                        conn.cursor(), value, ctx, base_id):
+                    return shard
+
+            finally:
+                timer.conn = None
+
+    return None
+
+
+def _apply_flags_to_lookup(
+        pool, lookup_shard, func, flags, base_id, ctx, value, timer, expected):
+    sclass = util.ctx_search(ctx)
+
+    if sclass == search.PREFIX:
+        return _apply_flags_to_prefix_lookup(pool, lookup_shard, func, flags,
+                base_id, ctx, value, timer, expected)
+
+    raise error.BadContext(ctx)
+
+
+def _apply_flags_to_prefix_lookup(
+        pool, lookup_shard, func, flags, base_id, ctx, value, timer, expected):
+    with pool.get_by_shard(lookup_shard) as conn:
+        timer.conn = conn
+        try:
+            result = func(conn.cursor(), 'prefix_lookup', flags,
+                    {'base_id': base_id, 'ctx': ctx, 'value': value})
+        finally:
+            timer.conn = None
+
+        if not result or result[0] != expected:
+            conn.rollback()
+            tpc.fail()
+            return False
+
+    return True
 
 
 def _remove_local_estates(shard, pool, cursor, estate, first_round=True):
