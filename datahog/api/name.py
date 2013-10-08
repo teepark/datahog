@@ -252,10 +252,15 @@ def shift(pool, base_id, ctx, value, index, timeout=None):
 
     :returns:
         boolean of whether the move happened or not. it might not happen if
-        there is not name for the given ``base_id/ctx/value``
+        there is no name for the given ``base_id/ctx/value``
 
     :raises ReadOnly: if given a read-only ``pool``
     '''
+    if pool.readonly:
+        raise error.ReadOnly()
+
+    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+        return query.reorder_name(conn.cursor(), base_id, ctx, value, index)
 
 
 def remove(pool, base_id, ctx, value, timeout=None):

@@ -1175,6 +1175,48 @@ limit %s
         } for base_id, flags, value in cursor.fetchall()]
 
 
+def reorder_name(cursor, base_id, ctx, value, index):
+    cursor.execute("""
+with oldpos as (
+    select pos
+    from name
+    where
+        time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and value=%s
+), bump as (
+    update alias
+    set pos=pos + (case
+        when (select pos from oldpos) < pos
+        then -1
+        else 1
+        end)
+    where
+        exists (select 1 from oldpos)
+        and time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and value=%s
+        and pos between symmetric (select pos from oldpos) and %s
+), move as (
+    update alias
+    set pos=%s
+    where
+        time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and value=%s
+    returning 1
+)
+select exists (select 1 from move)
+""", (base_id, ctx, value,
+        base_id, ctx, value, index
+        index, base_id, ctx, value))
+
+    return cursor.fetchone()[0]
+
+
 def add_flags(cursor, table, flags, where):
     clause, values = ['time_removed is null'], [flags]
     for key, value in where.items():
