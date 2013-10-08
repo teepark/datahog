@@ -985,22 +985,41 @@ def _remove_prefix_lookup(pool, lookup_shard, base_id, ctx, value, timer):
             timer.conn = None
 
 
-def _remove_local_estates(shard, pool, cursor, estate, first_round=True):
-    alias_lookups, rels, guids = estate[shard]
-    guids = guids[:]
-    del estate[shard][2][:]
+def _remove_lookups(cursor, triples):
+    prefixes = []
+    for triple in triples:
+        if util.ctx_search(triple[1]) == search.PREFIX:
+            prefixes.append(triple)
+
+    removed = query.remove_prefix_lookups_multi(cursor, prefixes)
+
+    return removed
+
+
+def _remove_local_estates(shard, pool, cursor, estate, entity_base):
+    guids = estate[shard][3][:]
+    del estate[shard][3][:]
 
     while guids:
-        if first_round:
+        if not entity_base:
             guids = query.remove_nodes(cursor, guids)
-            first_round = False
+        entity_base = False
+
+        query.remove_properties_multiple_bases(cursor, guids)
 
         aliases = query.remove_aliases_multiple_bases(cursor, guids)
         for value, ctx in aliases:
             # add each alias_lookup to every shard it *might* live on
             digest = hashlib.sha1(value).digest()
             for s in pool.shards_for_lookup_hash(digest):
-                estate.setdefault(s, (set(), [], []))[0].add((value, ctx))
+                group = estate.setdefault(s, (set(), set(), [], []))[0]
+                group.add((value, ctx))
+
+        names = query.remove_names_multiple_bases(cursor, guids)
+        for base_id, ctx, value in names:
+            for s in pool.shards_for_lookup_prefix(value):
+                group = estate.setdefault(s, (set(), set(), [], []))[1]
+                group.add((base_id, ctx, value))
 
         removed_rels = query.remove_relationships_multiple_bases(cursor, guids)
         for base_id, ctx, forward, rel_id in removed_rels:
@@ -1010,16 +1029,18 @@ def _remove_local_estates(shard, pool, cursor, estate, first_round=True):
             else:
                 s = pool.shard_by_guid(base_id)
             item = (base_id, ctx, not forward, rel_id)
-            estate.setdefault(s, (set(), [], []))[1].append(item)
+            estate.setdefault(s, (set(), set(), [], []))[2].append(item)
 
         children = query.remove_edges_multiple_bases(cursor, guids)
-        for pair in children:
+        for guid in children:
             # append each child node to its shard
-            s = pool.shard_by_guid(pair[0])
-            estate.setdefault(s, (set(), [], []))[2].append(pair)
+            s = pool.shard_by_guid(guid)
+            estate.setdefault(s, (set(), set(), [], []))[3].append(guid)
 
-        guids = estate[shard][2][:]
-        del estate[shard][2][:]
+        guids = estate[shard][3][:]
+        del estate[shard][3][:]
+
+    alias_lookups, name_lookups, rels, guids = estate[shard]
 
     if alias_lookups:
         removed = query.remove_alias_lookups_multi(cursor, list(alias_lookups))
@@ -1028,6 +1049,14 @@ def _remove_local_estates(shard, pool, cursor, estate, first_round=True):
                 if s == shard:
                     continue
                 estate[s][0].discard(pair)
+
+    if name_lookups:
+        removed = _remove_lookups(cursor, name_lookups)
+        for triple in removed:
+            for s in pool.shards_for_lookup_prefix(triple[2]):
+                if s == shard:
+                    continue
+                estate[s][1].discard(triple)
 
     if rels:
         query.remove_relationships_multi(cursor, rels)
@@ -1070,7 +1099,7 @@ def _remove_entity(pool, guid, ctx, timer):
         pool.put(conn)
         timer.conn = None
 
-    estates = {pool.shard_by_guid(guid): (set(), [], [guid])}
+    estates = {pool.shard_by_guid(guid): (set(), set(), [], [guid])}
 
     try:
         while estates:
@@ -1082,7 +1111,7 @@ def _remove_entity(pool, guid, ctx, timer):
             try:
                 with tpc as conn:
                     _remove_local_estates(next(iter(estates)), pool,
-                            conn.cursor(), estates, False)
+                            conn.cursor(), estates, True)
             finally:
                 pool.put(conn)
     except Exception:
@@ -1124,7 +1153,7 @@ def _remove_node(pool, guid, ctx, base_id, timer):
         pool.put(conn)
         timer.conn = None
 
-    estates = {pool.shard_by_guid(guid): (set(), [], [guid])}
+    estates = {pool.shard_by_guid(guid): (set(), set(), [], [guid])}
 
     try:
         while estates:
@@ -1135,8 +1164,8 @@ def _remove_node(pool, guid, ctx, base_id, timer):
 
             try:
                 with tpc as conn:
-                    _remove_local_estates(
-                        next(iter(estates)), pool, conn.cursor(), estates)
+                    _remove_local_estates(next(iter(estates)),
+                            pool, conn.cursor(), estates, False)
             finally:
                 pool.put(conn)
     except Exception:

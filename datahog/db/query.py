@@ -1283,6 +1283,34 @@ where
     return  bool(cursor.rowcount)
 
 
+def remove_names_multiple_bases(cursor, base_ids):
+    cursor.execute("""
+update name
+set time_removed=now()
+where
+    time_removed is null
+    and base_id in (%s)
+returning base_id, ctx, value
+""" % (','.join('%s' for x in base_ids),), base_ids)
+
+    return cursor.fetchall()
+
+
+def remove_prefix_lookups_multi(cursor, triples):
+    flat = reduce(lambda a, b: a.extend(b) or a, triples, [])
+
+    cursor.execute("""
+update prefix_lookup
+set time_removed=now()
+where
+    time_removed is null
+    and (base_id, ctx, value) in (%s)
+returning base_id, ctx, value
+""" % (','.join('(%s, %s, %s)' for t in triples),), flat)
+
+    return cursor.fetchall()
+
+
 def add_flags(cursor, table, flags, where):
     clause, values = ['time_removed is null'], [flags]
     for key, value in where.items():
