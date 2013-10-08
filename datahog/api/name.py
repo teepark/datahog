@@ -286,6 +286,10 @@ def remove(pool, base_id, ctx, value, timeout=None):
 
     :raises ReadOnly: if given a read-only ``pool``
     '''
+    if pool.readonly:
+        raise error.ReadOnly()
+
+    return txn.remove_name(pool, base_id, ctx, value, timeout)
 
 
 def _token_for_searchlist(ctx, results):

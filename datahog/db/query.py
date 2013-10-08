@@ -376,9 +376,20 @@ with oldpos as (
         and base_id=%s
         and ctx=%s
         and pos between symmetric (select pos from oldpos) and %s
+), maxpos(n) as (
+    select count(*) - 1
+    from alias
+    where
+        time_removed is null
+        and base_id=%s
+        and ctx=%s
 ), move as (
     update alias
-    set pos=%s
+    set pos=(case
+        when %s > (select n from maxpos)
+        then (select n from maxpos)
+        else %s
+        end)
     where
         time_removed is null
         and base_id=%s
@@ -387,7 +398,10 @@ with oldpos as (
     returning 1
 )
 select exists (select 1 from move)
-""", (base_id, ctx, value, base_id, ctx, pos, pos, base_id, ctx, value))
+""", (base_id, ctx, value,
+        base_id, ctx, pos,
+        base_id, ctx,
+        pos, pos, base_id, ctx, value))
 
     return cursor.fetchone()[0]
 
@@ -1186,7 +1200,7 @@ with oldpos as (
         and ctx=%s
         and value=%s
 ), bump as (
-    update alias
+    update name
     set pos=pos + (case
         when (select pos from oldpos) < pos
         then -1
@@ -1197,11 +1211,21 @@ with oldpos as (
         and time_removed is null
         and base_id=%s
         and ctx=%s
-        and value=%s
         and pos between symmetric (select pos from oldpos) and %s
+), maxpos(n) as (
+    select count(*) - 1
+    from name
+    where
+        time_removed is null
+        and base_id=%s
+        and ctx=%s
 ), move as (
-    update alias
-    set pos=%s
+    update name
+    set pos=(case
+        when %s > (select n from maxpos)
+        then (select n from maxpos)
+        else %s
+        end)
     where
         time_removed is null
         and base_id=%s
@@ -1209,12 +1233,54 @@ with oldpos as (
         and value=%s
     returning 1
 )
-select exists (select 1 from move)
+select 1 from move
 """, (base_id, ctx, value,
-        base_id, ctx, value, index
-        index, base_id, ctx, value))
+        base_id, ctx, index,
+        base_id, ctx,
+        index, index, base_id, ctx, value))
 
-    return cursor.fetchone()[0]
+    return bool(cursor.rowcount)
+
+
+def remove_name(cursor, base_id, ctx, value):
+    cursor.execute("""
+with removal as (
+    update name
+    set time_removed=now()
+    where
+        time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and value=%s
+    returning pos
+), bump as (
+    update name
+    set pos = pos - 1
+    where
+        exists (select 1 from removal)
+        and time_removed is null
+        and base_id=%s
+        and ctx=%s
+        and pos > (select pos from removal)
+)
+select 1 from removal
+""", (base_id, ctx, value, base_id, ctx))
+
+    return bool(cursor.rowcount)
+
+
+def remove_prefix_lookup(cursor, base_id, ctx, value):
+    cursor.execute("""
+update prefix_lookup
+set time_removed=now()
+where
+    time_removed is null
+    and base_id=%s
+    and ctx=%s
+    and value=%s
+""", (base_id, ctx, value))
+
+    return  bool(cursor.rowcount)
 
 
 def add_flags(cursor, table, flags, where):

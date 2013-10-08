@@ -881,7 +881,7 @@ def _clear_name_flags(pool, base_id, ctx, value, flags, timer):
 
 
 def _find_name_lookup_shard(pool, base_id, ctx, value, timer):
-    sclass = util.base_search(ctx)
+    sclass = util.ctx_search(ctx)
 
     if sclass == search.PREFIX:
         return _find_prefix_lookup_shard(pool, base_id, ctx, value, timer)
@@ -931,6 +931,58 @@ def _apply_flags_to_prefix_lookup(
             return False
 
     return True
+
+
+def remove_name(pool, base_id, ctx, value, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _remove_name(pool, base_id, ctx, value, timer)
+    with timer:
+        return _remove_name(pool, base_id, ctx, value, timer)
+
+
+def _remove_name(pool, base_id, ctx, value, timer):
+    lookup_shard = _find_name_lookup_shard(pool, base_id, ctx, value, timer)
+
+    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'remove_name',
+            (base_id, ctx, value))
+
+    try:
+        with tpc as conn:
+            timer.conn = conn
+            if not query.remove_name(conn.cursor(), base_id, ctx, value):
+                tpc.fail()
+                return False
+    finally:
+        pool.put(conn)
+        timer.conn = None
+
+    with tpc.elsewhere():
+        if not _remove_lookup(pool, lookup_shard, base_id, ctx, value, timer):
+            tpc.fail()
+            return False
+
+    return True
+
+
+def _remove_lookup(pool, lookup_shard, base_id, ctx, value, timer):
+    sclass = util.ctx_search(ctx)
+
+    if sclass == search.PREFIX:
+        return _remove_prefix_lookup(
+                pool, lookup_shard, base_id, ctx, value, timer)
+
+    raise error.BadContext(ctx)
+
+
+def _remove_prefix_lookup(pool, lookup_shard, base_id, ctx, value, timer):
+    with pool.get_by_shard(lookup_shard) as conn:
+        timer.conn = conn
+        try:
+            return query.remove_prefix_lookup(
+                    conn.cursor(), base_id, ctx, value)
+        finally:
+            timer.conn = None
 
 
 def _remove_local_estates(shard, pool, cursor, estate, first_round=True):
