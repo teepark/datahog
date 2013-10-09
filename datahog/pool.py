@@ -51,11 +51,6 @@ class ConnectionPool(object):
             - ``password``: user's password
             - ``database``: database name
 
-        ``shard_bits``
-            Number of bits at the top of auto-incrementing 64-bit ints to
-            reserve for shard number. 8 is a good value -- allows for up to 256
-            shards, and auto-increments (per shard) up to ``2**56``.
-
         ``lookup_insertion_plans``
             Lists of lists of two-tuples of shard numbers, and their integer
             weights. This is used for the associated lookup tables of aliases
@@ -75,6 +70,15 @@ class ConnectionPool(object):
             weighted random choice of shard for inserting a new entity. This
             key is optional, the full list of shards will be used by default.
 
+        ``shard_bits``
+            Number of bits at the top of auto-incrementing 64-bit ints to
+            reserve for shard number. 8 is a good value -- allows for up to 256
+            shards, and auto-increments (per shard) up to ``2**56``.
+
+        ``digest_key``
+            Lookups by strings will be sharded on the HMAC digest of the
+            string. Provide the key here.
+
     :param bool readonly:
         Whether to disallow data-modifying methods against this connection
         pool. Can be useful for querying replication slaves to take some read
@@ -90,10 +94,14 @@ class ConnectionPool(object):
 
         self._init_conf()
 
+        self.shardbits = self._dbconf['shard_bits']
+        self.digestkey = self._dbconf['digest_key']
+
     def _init_conf(self):
         conf = self._dbconf
 
-        for key in ('shards', 'shard_bits', 'lookup_insertion_plans'):
+        for key in ('shards', 'shard_bits', 'lookup_insertion_plans',
+                'digest_key'):
             if not conf.get(key, None):
                 raise Exception("missing or empty required key %r" % key)
 
@@ -153,7 +161,7 @@ class ConnectionPool(object):
         self._conns[shard].put(conn)
 
     def shard_by_guid(self, guid):
-        return guid >> (64 - self._dbconf['shard_bits'])
+        return guid >> (64 - self.shardbits)
 
     def shards_for_lookup_hash(self, digest):
         num = _int_hash(digest)

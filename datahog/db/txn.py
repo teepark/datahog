@@ -4,6 +4,7 @@ from __future__ import absolute_import
 
 import contextlib
 import hashlib
+import hmac
 import random
 import sys
 import time
@@ -177,7 +178,7 @@ def set_alias(pool, base_id, ctx, alias, flags, index, timeout):
         return _set_alias(pool, base_id, ctx, alias, flags, index, timer)
 
 def _set_alias(pool, base_id, ctx, alias, flags, index, timer):
-    digest = hashlib.sha1(alias).digest()
+    digest = hmac.new(pool.digestkey, alias, hashlib.sha1).digest()
     digest_b64 = digest.encode('base64').strip()
 
     # look up pre-existing aliases on any but the current insert shard
@@ -262,7 +263,7 @@ def add_alias_flags(pool, base_id, ctx, alias, flags, timeout):
         return _add_alias_flags(pool, base_id, ctx, alias, flags, timer)
 
 def _add_alias_flags(pool, base_id, ctx, alias, flags, timer):
-    digest = hashlib.sha1(alias).digest()
+    digest = hmac.new(pool.digestkey, alias, hashlib.sha1).digest()
     digest_b64 = digest.encode('base64').strip()
 
     for shard in pool.shards_for_lookup_hash(digest):
@@ -326,7 +327,7 @@ def clear_alias_flags(pool, base_id, ctx, alias, flags, timeout):
         return _clear_alias_flags(pool, base_id, ctx, alias, flags, timer)
 
 def _clear_alias_flags(pool, base_id, ctx, alias, flags, timer):
-    digest = hashlib.sha1(alias).digest()
+    digest = hmac.new(pool.digestkey, alias, hashlib.sha1).digest()
     digest_b64 = digest.encode('base64').strip()
 
     for shard in pool.shards_for_lookup_hash(digest):
@@ -393,7 +394,7 @@ def remove_alias(pool, base_id, ctx, alias, timeout):
         return _remove_alias(pool, base_id, ctx, alias, timer)
 
 def _remove_alias(pool, base_id, ctx, alias, timer):
-    digest = hashlib.sha1(alias).digest()
+    digest = hmac.new(pool.digestkey, alias, hashlib.sha1).digest()
     digest_b64 = digest.encode('base64').strip()
 
     for shard in pool.shards_for_lookup_hash(digest):
@@ -1010,7 +1011,7 @@ def _remove_local_estates(shard, pool, cursor, estate, entity_base):
         aliases = query.remove_aliases_multiple_bases(cursor, guids)
         for value, ctx in aliases:
             # add each alias_lookup to every shard it *might* live on
-            digest = hashlib.sha1(value).digest()
+            digest = hmac.new(pool.digestkey, alias, hashlib.sha1).digest()
             for s in pool.shards_for_lookup_hash(digest):
                 group = estate.setdefault(s, (set(), set(), [], []))[0]
                 group.add((value, ctx))

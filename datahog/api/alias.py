@@ -3,6 +3,7 @@
 from __future__ import absolute_import
 
 import hashlib
+import hmac
 
 from .. import error
 from ..const import table, util
@@ -90,7 +91,8 @@ def lookup(pool, value, ctx, timeout=None):
         ``flags`` keys), or None if there is no alias for the given
         ``ctx/value``
     '''
-    result = txn.lookup_alias(pool, hashlib.sha1(value).digest(), ctx, timeout)
+    digest = hmac.new(pool.digestkey, value, hashlib.sha1).digest()
+    result = txn.lookup_alias(pool, digest, ctx, timeout)
 
     if result is not None:
         # we selected on alias_lookup, which doesn't store the value
