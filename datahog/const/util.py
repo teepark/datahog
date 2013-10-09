@@ -79,6 +79,12 @@ def ctx_search(ctx):
     return meta and meta[2].get('search')
 
 
+def ctx_phonetic_loose(ctx):
+    "return the 'phonetic_loose' context option"
+    meta = context.META.get(ctx)
+    return meta and meta[2].get('phonetic_loose')
+
+
 def flags_to_int(ctx, flag_list):
     "convert an iterable of flag consts to a single bitmap integer"
     if ctx not in context.META:
@@ -164,3 +170,14 @@ def storage_unwrap(ctx, value):
         return mummy.loads(value)
 
     return value
+
+
+_dm = None
+
+def dmetaphone(value):
+    global _dm
+    if _dm is None:
+        import fuzzy
+        _dm = fuzzy.DMetaphone()
+    dm, dmalt = _dm(value)
+    return dm.ljust(4, ' '), (dmalt.ljust(4, ' ') if dmalt else None)

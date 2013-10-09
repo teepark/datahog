@@ -1,3 +1,4 @@
+drop table phonetic_lookup;
 drop table prefix_lookup;
 drop table name;
 drop table edge;

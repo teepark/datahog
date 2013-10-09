@@ -27,6 +27,7 @@ import psycopg2
 import psycopg2.extensions
 
 from . import error
+from .const import util
 
 __all__ = []
 
@@ -190,6 +191,9 @@ class ConnectionPool(object):
     def shard_for_prefix_write(self, value):
         return _pick_from_plan(None,
                 self._dbconf['lookup_insertion_plans'][-1], ord(value[0]))
+
+    # pass in the dmetaphone code, then these implementations are identical
+    shard_for_phonetic_write = shard_for_prefix_write
 
     def shard_for_entity_write(self):
         plan = self._dbconf['entity_insertion_plan']

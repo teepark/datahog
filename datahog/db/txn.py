@@ -744,8 +744,10 @@ def _create_name(pool, base_id, ctx, value, flags, index, timer):
         timer.conn = None
 
     with tpc.elsewhere():
-        inserted = _write_name_lookup(
-                pool, tpc, base_id, ctx, value, flags, timer)
+        if not _write_name_lookup(
+                pool, tpc, base_id, ctx, value, flags, timer):
+            tpc.fail()
+            return False
 
     return True
 
@@ -756,18 +758,61 @@ def _write_name_lookup(pool, tpc, base_id, ctx, value, flags, timer):
     if sclass == search.PREFIX:
         return _write_prefix_lookup(pool, base_id, ctx, value, flags, timer)
 
+    if sclass == search.PHONETIC:
+        return _write_phonetic_lookups(pool, base_id, ctx, value, flags, timer)
+
     if sclass is None:
         raise error.BadContext(ctx)
 
 
 def _write_prefix_lookup(pool, base_id, ctx, value, flags, timer):
-    try:
-        with pool.get_by_shard(pool.shard_for_prefix_write(value)) as conn:
-            timer.conn = conn
+    with pool.get_by_shard(pool.shard_for_prefix_write(value)) as conn:
+        timer.conn = conn
+        try:
             return query.insert_prefix_lookup(
                     conn.cursor(), value, flags, ctx, base_id)
+        finally:
+            timer.conn = None
+
+
+def _write_phonetic_lookups(pool, base_id, ctx, value, flags, timer):
+    dm, dmalt = util.dmetaphone(value)
+    shard1 = pool.shard_for_phonetic_write(dm)
+    tpc = TwoPhaseCommit(pool, shard1, 'phonetic_lookup_writes',
+            (base_id, ctx, value, flags, shard1))
+
+    try:
+        with tpc as conn:
+            timer.conn = conn
+            inserted = query.insert_phonetic_lookup(
+                    conn.cursor(), value, dm, flags, ctx, base_id)
     finally:
         timer.conn = None
+        pool.put(conn)
+
+    if not inserted:
+        tpc.rollback()
+        return False
+
+    if dmalt is None or not util.ctx_phonetic_loose(ctx):
+        tpc.commit()
+        return True
+
+    with tpc.elsewhere():
+        shard2 = pool.shard_for_phonetic_write(dmalt)
+        with pool.get_by_shard(shard2) as conn:
+            timer.conn = conn
+            try:
+                inserted = query.insert_phonetic_lookup(
+                        conn.cursor(), value, dmalt, flags, ctx, base_id)
+            finally:
+                timer.conn = None
+
+            if not inserted:
+                conn.rollback()
+                tpc.fail()
+
+    return inserted
 
 
 def search_names(pool, value, ctx, limit, start, timeout):
@@ -784,13 +829,16 @@ def _search_names(pool, value, ctx, limit, start, timer):
     if sclass == search.PREFIX:
         return _search_prefix(pool, value, ctx, limit, start, timer)
 
+    if sclass == search.PHONETIC:
+        return _search_phonetic(pool, value, ctx, limit, start, timer)
+
 
 def _search_prefix(pool, value, ctx, limit, start, timer):
     if start is None:
         start = ''
 
-    names = []
-    for shard in pool.shards_for_lookup_prefix(value):
+    names, shards = [], list(pool.shards_for_lookup_prefix(value))
+    for shard in shards:
         with pool.get_by_shard(shard) as conn:
             try:
                 timer.conn = conn
@@ -799,8 +847,63 @@ def _search_prefix(pool, value, ctx, limit, start, timer):
             finally:
                 timer.conn = None
 
-    names.sort(key=lambda name: name['value'])
-    return names[:limit]
+    if len(shards) > 1:
+        names.sort(key=lambda name: name['value'])
+        names = names[:limit]
+
+    return names, names[-1]['value']
+
+
+def _sortkey(shardbits):
+    def f(d):
+        return (d['base_id'] & ((1 << (64 - shardbits)) - 1)), d['base_id']
+    return f
+
+def _search_phonetic(pool, value, ctx, limit, start, timer):
+    if start is None:
+        start = {}
+
+    dm, dmalt = util.dmetaphone(value)
+    shard1 = pool.shard_for_phonetic_write(dm)
+    with pool.get_by_shard(shard1) as conn:
+        timer.conn = conn
+        try:
+            results = query.search_phonetics(
+                    conn.cursor(), dm, ctx, limit, start.get(dm, 0))
+        finally:
+            timer.conn = None
+
+    if dmalt is None or not util.ctx_phonetic_loose(ctx):
+        return results
+
+    shard2 = pool.shard_for_phonetic_write(dmalt)
+    with pool.get_by_shard(shard2) as conn:
+        timer.conn = conn
+        try:
+            results.extend(query.search_phonetics(
+                conn.cursor(), dmalt, ctx, limit, start.get(dmalt, 0)))
+        finally:
+            timer.conn = None
+
+    # global sort
+    results.sort(key=_sortkey(pool.shardbits))
+
+    # calculate page_token: last base_id for a code wins
+    token = {}
+    for r in results:
+        token[r.pop('code')] = r['base_id']
+
+    # de-duplicate by the unique criteria
+    copy = []
+    seen = set()
+    for r in results:
+        trip = (r['base_id'], r['ctx'], r['value'])
+        if trip in seen:
+            continue
+        seen.add(trip)
+        copy.append(r)
+    results = copy
+    return results[:limit], token
 
 
 def add_name_flags(pool, base_id, ctx, value, flags, timeout):

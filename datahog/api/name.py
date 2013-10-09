@@ -93,12 +93,12 @@ def search(pool, value, ctx, limit=100, start=None, timeout=None):
     if util.ctx_search(ctx) is None:
         raise error.BadContext(ctx)
 
-    results = txn.search_names(pool, value, ctx, limit, start, timeout)
+    results, token = txn.search_names(pool, value, ctx, limit, start, timeout)
 
     for result in results:
         result['flags'] = util.int_to_flags(ctx, result['flags'])
 
-    return results, _token_for_searchlist(ctx, results)
+    return results, token
 
 
 def list(pool, base_id, ctx, limit=100, start=0, timeout=None):
@@ -294,16 +294,3 @@ def remove(pool, base_id, ctx, value, timeout=None):
         raise error.ReadOnly()
 
     return txn.remove_name(pool, base_id, ctx, value, timeout)
-
-
-def _token_for_searchlist(ctx, results):
-    if not results:
-        return None
-
-    sclass = util.ctx_search(ctx)
-
-    if sclass == searchconst.PREFIX:
-        return results[-1]['value']
-
-    if sclass is None:
-        raise error.BadContext(ctx)

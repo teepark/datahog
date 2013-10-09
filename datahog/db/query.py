@@ -1119,6 +1119,17 @@ insert into prefix_lookup (value, flags, ctx, base_id)
 values (%s, %s, %s, %s)
 """, (value, flags, ctx, base_id))
 
+    return True
+
+
+def insert_phonetic_lookup(cursor, value, code, flags, ctx, base_id):
+    cursor.execute("""
+insert into phonetic_lookup (value, code, flags, ctx, base_id)
+values (%s, %s, %s, %s, %s)
+""", (value, code, flags, ctx, base_id))
+
+    return True
+
 
 def select_names(cursor, base_id, ctx, limit, start):
     cursor.execute("""
@@ -1186,6 +1197,28 @@ limit %s
             'flags': flags,
             'value': value,
             'ctx': ctx,
+        } for base_id, flags, value in cursor.fetchall()]
+
+
+def search_phonetics(cursor, code, ctx, limit, start):
+    cursor.execute("""
+select base_id, flags, value
+from phonetic_lookup
+where
+    time_removed is null
+    and ctx=%s
+    and code=%s
+    and base_id > %s
+order by base_id
+limit %s
+""", (ctx, code, start, limit))
+
+    return [{
+            'base_id': base_id,
+            'flags': flags,
+            'value': value,
+            'ctx': ctx,
+            'code': code,
         } for base_id, flags, value in cursor.fetchall()]
 
 

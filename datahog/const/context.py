@@ -4,7 +4,7 @@ from __future__ import absolute_import
 
 import mummy
 
-from . import storage, table
+from . import search, storage, table
 
 
 META = {}
@@ -48,6 +48,18 @@ def set_context(title, value, tbl, meta=None):
                 in the event of ``'storage': SERIAL``, a schema can be provided,
                 against which values will be validated, and which
                 will also be used to further compress values in the db.
+
+            search
+                defines the behavior of name.search(). must be one of the
+                search constants ``PREFIX`` or ``PHONETIC``. only applies when
+                ``tbl`` is ``table.NAME``.
+
+                using ``search.PHONETIC`` requires that the ``fuzzy`` python
+                library be installed.
+
+            phonetic_loose
+                for ``table.NAME`` and ``search.PHONETIC``, setting this to
+                ``True`` (default ``False``) enables looser phonetic matching.
     '''
     if title in globals():
         raise ValueError("context name already in use: %s" % title)
@@ -75,6 +87,10 @@ def set_context(title, value, tbl, meta=None):
         if 'schema' in meta:
             meta['schema'] = type(title.title() + 'Schema', (mummy.Message,),
                     {'SCHEMA': meta['schema']})
+
+        if meta.get('search') == search.PHONETIC:
+            # just so that this blows up nice and early
+            import fuzzy
 
     globals()[title] = value
     META[value] = (title, tbl, meta)

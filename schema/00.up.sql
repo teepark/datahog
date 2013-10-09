@@ -151,3 +151,16 @@ create table prefix_lookup (
 create index prefix_lookup_idx on prefix_lookup (
   ctx, value
 ) where time_removed is null;
+
+create table phonetic_lookup(
+  code varchar(4) not null,
+  value varchar(255) not null,
+  flags smallint default 0 not null,
+  time_removed timestamp default null,
+  ctx smallint not null,
+  base_id bigint not null
+);
+
+create index phonetic_lookup_idx on phonetic_lookup(
+  ctx, code, base_id
+) where time_removed is null;
