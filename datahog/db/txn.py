@@ -859,6 +859,11 @@ def _sortkey(shardbits):
         return (d['base_id'] & ((1 << (64 - shardbits)) - 1)), d['base_id']
     return f
 
+def _phontoken(results):
+    token = {}
+    for r in results:
+        token[r.pop('code')] = r['base_id']
+
 def _search_phonetic(pool, value, ctx, limit, start, timer):
     if start is None:
         start = {}
@@ -874,7 +879,7 @@ def _search_phonetic(pool, value, ctx, limit, start, timer):
             timer.conn = None
 
     if dmalt is None or not util.ctx_phonetic_loose(ctx):
-        return results
+        return results, _phontoken(results)
 
     shard2 = pool.shard_for_phonetic_write(dmalt)
     with pool.get_by_shard(shard2) as conn:
@@ -888,10 +893,7 @@ def _search_phonetic(pool, value, ctx, limit, start, timer):
     # global sort
     results.sort(key=_sortkey(pool.shardbits))
 
-    # calculate page_token: last base_id for a code wins
-    token = {}
-    for r in results:
-        token[r.pop('code')] = r['base_id']
+    token = _phontoken(results)
 
     # de-duplicate by the unique criteria
     copy = []
