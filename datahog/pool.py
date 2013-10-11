@@ -194,6 +194,7 @@ class ConnectionPool(object):
 
     # pass in the dmetaphone code, then these implementations are identical
     shard_for_phonetic_write = shard_for_prefix_write
+    shards_for_lookup_phonetic = shards_for_lookup_prefix
 
     def shard_for_entity_write(self):
         plan = self._dbconf['entity_insertion_plan']

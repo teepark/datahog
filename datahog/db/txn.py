@@ -869,26 +869,27 @@ def _search_phonetic(pool, value, ctx, limit, start, timer):
         start = {}
 
     dm, dmalt = util.dmetaphone(value)
-    shard1 = pool.shard_for_phonetic_write(dm)
-    with pool.get_by_shard(shard1) as conn:
-        timer.conn = conn
-        try:
-            results = query.search_phonetics(
-                    conn.cursor(), dm, ctx, limit, start.get(dm, 0))
-        finally:
-            timer.conn = None
+    results = []
+    for shard in pool.shards_for_lookup_phonetic(dm):
+        with pool.get_by_shard(shard) as conn:
+            timer.conn = conn
+            try:
+                results.extend(query.search_phonetics(
+                        conn.cursor(), dm, ctx, limit, start.get(dm, 0)))
+            finally:
+                timer.conn = None
 
     if dmalt is None or not util.ctx_phonetic_loose(ctx):
         return results, _phontoken(results)
 
-    shard2 = pool.shard_for_phonetic_write(dmalt)
-    with pool.get_by_shard(shard2) as conn:
-        timer.conn = conn
-        try:
-            results.extend(query.search_phonetics(
-                conn.cursor(), dmalt, ctx, limit, start.get(dmalt, 0)))
-        finally:
-            timer.conn = None
+    for shard in pool.shards_for_lookup_phonetic(dmalt):
+        with pool.get_by_shard(shard) as conn:
+            timer.conn = conn
+            try:
+                results.extend(query.search_phonetics(
+                    conn.cursor(), dmalt, ctx, limit, start.get(dmalt, 0)))
+            finally:
+                timer.conn = None
 
     # global sort
     results.sort(key=_sortkey(pool.shardbits))
