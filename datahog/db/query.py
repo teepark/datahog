@@ -449,6 +449,7 @@ select 1 from removal
 
 def remove_alias_lookups_multi(cursor, aliases):
     flat_als = reduce(lambda a, b: a.extend(b) or a, aliases, [])
+    print "removing alias_lookups %r" % (aliases,)
 
     cursor.execute("""
 update alias_lookup
@@ -1179,6 +1180,21 @@ where
         } for base_id, flags in cursor.fetchall()]
 
 
+def find_phonetic_lookup(cursor, code, ctx, value, base_id):
+    cursor.execute("""
+select 1
+from phonetic_lookup
+where
+    time_removed is null
+    and ctx=%s
+    and code=%s
+    and value=%s
+    and base_id=%s
+""", (ctx, code, value, base_id))
+
+    return bool(cursor.rowcount)
+
+
 def search_prefixes(cursor, value, ctx, limit, start):
     cursor.execute("""
 select base_id, flags, value
@@ -1316,6 +1332,21 @@ where
     return  bool(cursor.rowcount)
 
 
+def remove_phonetic_lookup(cursor, base_id, ctx, code, value):
+    cursor.execute("""
+update phonetic_lookup
+set time_removed=now()
+where
+    time_removed is null
+    and ctx=%s
+    and code=%s
+    and value=%s
+    and base_id=%s
+""", (ctx, code, value, base_id))
+
+    return bool(cursor.rowcount)
+
+
 def remove_names_multiple_bases(cursor, base_ids):
     cursor.execute("""
 update name
@@ -1340,6 +1371,21 @@ where
     and (base_id, ctx, value) in (%s)
 returning base_id, ctx, value
 """ % (','.join('(%s, %s, %s)' for t in triples),), flat)
+
+    return cursor.fetchall()
+
+
+def remove_phonetic_lookups_multi(cursor, triples):
+    flat = reduce(lambda a, b: a.extend(b) or a, triples, [])
+
+    cursor.execute("""
+update phonetic_lookup
+set time_removed=now()
+where
+    time_removed is null
+    and (base_id, ctx, value) in (%s)
+returning base_id, ctx, value
+""" % (','.join('(%s, %s, %s)' for t in triples)), flat)
 
     return cursor.fetchall()
 

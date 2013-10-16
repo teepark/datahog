@@ -949,6 +949,7 @@ def _add_name_flags(pool, base_id, ctx, value, flags, timer):
     with tpc.elsewhere():
         if not _apply_flags_to_lookup(pool, lookup_shard, query.add_flags,
                 flags, base_id, ctx, value, timer, result_flags):
+            tpc.fail()
             return None
 
     return result_flags
@@ -999,6 +1000,9 @@ def _find_name_lookup_shard(pool, base_id, ctx, value, timer):
     if sclass == search.PREFIX:
         return _find_prefix_lookup_shard(pool, base_id, ctx, value, timer)
 
+    if sclass == search.PHONETIC:
+        return _find_phonetic_lookup_shards(pool, base_id, ctx, value, timer)
+
     raise error.BadContext(ctx)
 
 
@@ -1017,6 +1021,41 @@ def _find_prefix_lookup_shard(pool, base_id, ctx, value, timer):
     return None
 
 
+def _find_phonetic_lookup_shards(pool, base_id, ctx, value, timer):
+    dm, dmalt = util.dmetaphone(value)
+
+    for shard in pool.shards_for_lookup_phonetic(dm):
+        with pool.get_by_shard(shard) as conn:
+            timer.conn = conn
+            try:
+                if query.find_phonetic_lookup(
+                        conn.cursor(), dm, ctx, value, base_id):
+                    dmshard = shard
+                    break
+            finally:
+                timer.conn = None
+    else:
+        return None
+
+    if dmalt is None or not util.ctx_phonetic_loose:
+        (dmshard, None)
+
+    for shard in pool.shards_for_lookup_phonetic(dmalt):
+        with pool.get_by_shard(shard) as conn:
+            timer.conn = conn
+            try:
+                if query.find_phonetic_lookup(
+                        conn.cursor(), dmalt, ctx, value, base_id):
+                    dmashard = shard
+                    break
+            finally:
+                timer.conn = None
+    else:
+        return None
+
+    return dmshard, dmashard
+
+
 def _apply_flags_to_lookup(
         pool, lookup_shard, func, flags, base_id, ctx, value, timer, expected):
     sclass = util.ctx_search(ctx)
@@ -1024,6 +1063,10 @@ def _apply_flags_to_lookup(
     if sclass == search.PREFIX:
         return _apply_flags_to_prefix_lookup(pool, lookup_shard, func, flags,
                 base_id, ctx, value, timer, expected)
+
+    if sclass == search.PHONETIC:
+        return _apply_flags_to_phonetic_lookups(pool, lookup_shard, func,
+                flags, base_id, ctx, value, timer, expected)
 
     raise error.BadContext(ctx)
 
@@ -1040,7 +1083,43 @@ def _apply_flags_to_prefix_lookup(
 
         if not result or result[0] != expected:
             conn.rollback()
-            tpc.fail()
+            return False
+
+    return True
+
+
+def _apply_flags_to_phonetic_lookups(
+        pool, lookup_shard, func, flags, base_id, ctx, value, timer, expected):
+    dm, dmalt = util.dmetaphone(value)
+    dmshard, dmashard = lookup_shard
+
+    with pool.get_by_shard(dmshard) as conn:
+        timer.conn = conn
+        try:
+            result = func(conn.cursor(), 'phonetic_lookup', flags,
+                    {'ctx': ctx, 'value': value, 'code': dm,
+                        'base_id': base_id})
+        finally:
+            timer.conn = None
+
+        if not result or result[0] != expected:
+            conn.rollback()
+            return False
+
+    if dmashard is None:
+        return True
+
+    with pool.get_by_shard(dmashard) as conn:
+        timer.conn = conn
+        try:
+            result = func(conn.cursor(), 'phonetic_lookup', flags,
+                    {'ctx': ctx, 'value': value, 'code': dmalt,
+                        'base_id': base_id})
+        finally:
+            timer.conn = None
+
+        if not result or result[0] != expected:
+            conn.rollback()
             return False
 
     return True
@@ -1085,6 +1164,10 @@ def _remove_lookup(pool, lookup_shard, base_id, ctx, value, timer):
         return _remove_prefix_lookup(
                 pool, lookup_shard, base_id, ctx, value, timer)
 
+    if sclass == search.PHONETIC:
+        return _remove_phonetic_lookups(
+                pool, lookup_shard, base_id, ctx, value, timer)
+
     raise error.BadContext(ctx)
 
 
@@ -1098,13 +1181,44 @@ def _remove_prefix_lookup(pool, lookup_shard, base_id, ctx, value, timer):
             timer.conn = None
 
 
+def _remove_phonetic_lookups(pool, lookup_shard, base_id, ctx, value, timer):
+    dm, dma = util.dmetaphone(value)
+    dmshard, dmashard = lookup_shard
+
+    with pool.get_by_shard(dmshard) as conn:
+        timer.conn = conn
+        try:
+            result = query.remove_phonetic_lookup(
+                    conn.cursor(), base_id, ctx, dm, value)
+        finally:
+            timer.conn = None
+
+    if not result or dmashard is None:
+        return result
+
+    with pool.get_by_shard(dmashard) as conn:
+        timer.conn = conn
+        try:
+            result = query.remove_phonetic_lookup(
+                    conn.cursor(), base_id, ctx, dma, value)
+        finally:
+            timer.conn = None
+
+    return result
+
+
 def _remove_lookups(cursor, triples):
     prefixes = []
+    phonetics = []
     for triple in triples:
-        if util.ctx_search(triple[1]) == search.PREFIX:
+        sclass = util.ctx_search(triple[1])
+        if sclass == search.PREFIX:
             prefixes.append(triple)
+        elif sclass == search.PHONETIC:
+            phonetics.append(triple)
 
     removed = query.remove_prefix_lookups_multi(cursor, prefixes)
+    removed.extend(query.remove_phonetic_lookups_multi(cursor, phonetics))
 
     return removed
 
@@ -1122,11 +1236,11 @@ def _remove_local_estates(shard, pool, cursor, estate, entity_base):
 
         aliases = query.remove_aliases_multiple_bases(cursor, guids)
         for value, ctx in aliases:
+            digest = hmac.new(pool.digestkey, value, hashlib.sha1).digest()
             # add each alias_lookup to every shard it *might* live on
-            digest = hmac.new(pool.digestkey, alias, hashlib.sha1).digest()
             for s in pool.shards_for_lookup_hash(digest):
                 group = estate.setdefault(s, (set(), set(), [], []))[0]
-                group.add((value, ctx))
+                group.add((digest, ctx))
 
         names = query.remove_names_multiple_bases(cursor, guids)
         for base_id, ctx, value in names:
