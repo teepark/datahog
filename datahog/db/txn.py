@@ -68,8 +68,10 @@ class TwoPhaseCommit(object):
         intxn = False
         conn = self._get_conn()
 
-        xid = conn.xid(random.randrange(1<<31), self._name,
-                '-'.join(map(str, self._uniq_data)))
+        xid = []
+        for ud in self._uniq_data:
+            xid.append(str(ud).decode('utf8').encode('ascii', 'ignore'))
+        xid = conn.xid(random.randrange(1<<31), self._name, '-'.join(xid)[:64])
         self._xid = xid
         conn.tpc_begin(xid)
 
@@ -207,6 +209,7 @@ def _set_alias(pool, base_id, ctx, alias, flags, index, timer):
 
     tpc = TwoPhaseCommit(pool, insert_shard, 'set_alias',
             (base_id, ctx, digest_b64))
+    conn = None
     try:
         with tpc as conn:
             timer.conn = conn
@@ -232,7 +235,8 @@ def _set_alias(pool, base_id, ctx, alias, flags, index, timer):
         raise error.AliasInUse(alias, ctx)
 
     finally:
-        pool.put(conn)
+        if conn is not None:
+            pool.put(conn)
         timer.conn = None
 
     with tpc.elsewhere():
@@ -725,6 +729,7 @@ def _create_name(pool, base_id, ctx, value, flags, index, timer):
 
     tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'create_name',
             (base_id, ctx, value, flags, index))
+    conn = None
     try:
         with tpc as conn:
             timer.conn = conn
@@ -740,7 +745,8 @@ def _create_name(pool, base_id, ctx, value, flags, index, timer):
         return False
 
     finally:
-        pool.put(conn)
+        if conn is not None:
+            pool.put(conn)
         timer.conn = None
 
     with tpc.elsewhere():
