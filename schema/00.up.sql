@@ -1,4 +1,6 @@
 
+create extension if not exists fuzzystrmatch;
+
 create sequence guids maxvalue %(max)d start with %(start)d;
 
 
