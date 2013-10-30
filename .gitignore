@@ -5,4 +5,5 @@
 datahog.egg-info/*
 MANIFEST.in
 build/*
+docs/build/*
 dist/*
