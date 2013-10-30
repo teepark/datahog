@@ -16,7 +16,7 @@ _missing = object()
 def set(pool, base_id, ctx, value, flags=None, timeout=None):
     '''set a property value on a guid object
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -79,7 +79,7 @@ def set(pool, base_id, ctx, value, flags=None, timeout=None):
 def get(pool, base_id, ctx, timeout=None):
     '''retrieve a stored property
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -119,7 +119,7 @@ def get(pool, base_id, ctx, timeout=None):
 def get_list(pool, base_id, ctx_list, timeout=None):
     '''fetch the properties under a base_id for a list of contexts
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -143,7 +143,7 @@ def get_list(pool, base_id, ctx_list, timeout=None):
 def increment(pool, base_id, ctx, by=1, limit=None, timeout=None):
     '''increment (or decrement) a numeric property's value
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -189,7 +189,7 @@ def increment(pool, base_id, ctx, by=1, limit=None, timeout=None):
 def add_flags(pool, base_id, ctx, flags, timeout=None):
     '''apply flags to an existing property
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -237,7 +237,7 @@ def add_flags(pool, base_id, ctx, flags, timeout=None):
 def clear_flags(pool, base_id, ctx, flags, timeout=None):
     '''remove flags from an existing property
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 

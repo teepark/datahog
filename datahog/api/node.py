@@ -255,7 +255,7 @@ def get_children(pool, base_id, ctx, limit=100, start=0, timeout=None):
 def update(pool, node_id, ctx, value, old_value=_missing, timeout=None):
     '''overwrite the value stored in a node
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -305,7 +305,7 @@ def update(pool, node_id, ctx, value, old_value=_missing, timeout=None):
 def increment(pool, node_id, ctx, by=1, limit=None, timeout=None):
     '''increment (or decrement) a numeric node's value
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -350,7 +350,7 @@ def increment(pool, node_id, ctx, by=1, limit=None, timeout=None):
 def add_flags(pool, node_id, ctx, flags, timeout=None):
     '''apply flags to a stored node
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -399,7 +399,7 @@ def add_flags(pool, node_id, ctx, flags, timeout=None):
 def clear_flags(pool, node_id, ctx, flags, timeout=None):
     '''remove flags from a stored node
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 

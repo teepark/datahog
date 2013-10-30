@@ -13,7 +13,7 @@ __all__ = ['create', 'get', 'add_flags', 'clear_flags', 'remove']
 def create(pool, ctx, flags=None, timeout=None):
     '''store a new entity
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -57,7 +57,7 @@ def create(pool, ctx, flags=None, timeout=None):
 def get(pool, guid, ctx, timeout=None):
     '''retrieve a stored entity
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -85,7 +85,7 @@ def get(pool, guid, ctx, timeout=None):
 def add_flags(pool, guid, ctx, flags, timeout=None):
     '''apply flags to a stored entity
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -133,7 +133,7 @@ def add_flags(pool, guid, ctx, flags, timeout=None):
 def clear_flags(pool, guid, ctx, flags, timeout=None):
     '''remove flags from a stored entity
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 

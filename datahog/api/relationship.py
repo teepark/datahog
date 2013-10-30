@@ -14,7 +14,7 @@ def create(pool, ctx, base_id, rel_id, forward_index=None, reverse_index=None,
         flags=None, timeout=None):
     '''make a new relationship between two guid objects
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -77,7 +77,7 @@ def create(pool, ctx, base_id, rel_id, forward_index=None, reverse_index=None,
 def list(pool, guid, ctx, forward=True, limit=100, start=0, timeout=None):
     '''list the relationships associated with a guid object
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -119,7 +119,7 @@ def list(pool, guid, ctx, forward=True, limit=100, start=0, timeout=None):
 def get(pool, ctx, base_id, rel_id, timeout=None):
     '''fetch the relationship between two guids
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -146,7 +146,7 @@ def get(pool, ctx, base_id, rel_id, timeout=None):
 def add_flags(pool, base_id, rel_id, ctx, flags, timeout=None):
     '''apply flags to an existing relationship
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -195,7 +195,7 @@ def add_flags(pool, base_id, rel_id, ctx, flags, timeout=None):
 def clear_flags(pool, base_id, rel_id, ctx, flags, timeout=None):
     '''remove flags from a relationship
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 

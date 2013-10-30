@@ -14,7 +14,7 @@ __all__ = ['create', 'search', 'list', 'add_flags', 'clear_flags', 'shift',
 def create(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
     '''store a name on a guid object
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -63,7 +63,7 @@ def create(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
 def search(pool, value, ctx, limit=100, start=None, timeout=None):
     '''collect the names matching a search query for a given context
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -104,7 +104,7 @@ def search(pool, value, ctx, limit=100, start=None, timeout=None):
 def list(pool, base_id, ctx, limit=100, start=0, timeout=None):
     '''list the names under a guid object for a given context
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -142,7 +142,7 @@ def list(pool, base_id, ctx, limit=100, start=0, timeout=None):
 def add_flags(pool, base_id, ctx, value, flags, timeout=None):
     '''apply flags to an existing name
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -190,7 +190,7 @@ def add_flags(pool, base_id, ctx, value, flags, timeout=None):
 def clear_flags(pool, base_id, ctx, value, flags, timeout=None):
     '''remove flags from an existing name
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 

@@ -16,7 +16,7 @@ __all__ = ['set', 'lookup', 'list', 'add_flags', 'clear_flags', 'remove']
 def set(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
     '''set an alias value on a guid object
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -74,7 +74,7 @@ def set(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
 def lookup(pool, value, ctx, timeout=None):
     '''retrieve an alias record by its value and context
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -105,7 +105,7 @@ def lookup(pool, value, ctx, timeout=None):
 def list(pool, base_id, ctx, limit=100, start=0, timeout=None):
     '''list the aliases associated with a guid object for a given context
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -144,7 +144,7 @@ def list(pool, base_id, ctx, limit=100, start=0, timeout=None):
 def add_flags(pool, base_id, ctx, value, flags, timeout=None):
     '''apply flags to an existing alias
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
@@ -192,7 +192,7 @@ def add_flags(pool, base_id, ctx, value, flags, timeout=None):
 def clear_flags(pool, base_id, ctx, alias, flags, timeout=None):
     '''remove flags from an existing alias
 
-    :param ConnetionPool pool:
+    :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
