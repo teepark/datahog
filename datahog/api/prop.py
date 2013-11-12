@@ -116,7 +116,7 @@ def get(pool, base_id, ctx, timeout=None):
         }
 
 
-def get_list(pool, base_id, ctx_list, timeout=None):
+def get_list(pool, base_id, ctx_list=None, timeout=None):
     '''fetch the properties under a base_id for a list of contexts
 
     :param ConnectionPool pool:
@@ -125,7 +125,9 @@ def get_list(pool, base_id, ctx_list, timeout=None):
 
     :param int base_id: the guid of the parent object
 
-    :param int ctx_list: the contexts of the properties to fetch
+    :param ctx_list:
+        the contexts of the properties to fetch. can be a list of context ints,
+        or ``None`` (default) to fetch all contexts for the ``base_id``
 
     :param timeout:
         maximum time in seconds that the method is allowed to take; the default
@@ -137,7 +139,10 @@ def get_list(pool, base_id, ctx_list, timeout=None):
         depending on whether the property exists for a given context.
     '''
     with pool.get_by_guid(base_id, timeout=timeout) as conn:
-        return query.select_properties(conn.cursor(), base_id, ctx_list)
+        if ctx_list is None:
+            return query.select_all_properties(conn.cursor(), base_id)
+        else:
+            return query.select_properties(conn.cursor(), base_id, ctx_list)
 
 
 def increment(pool, base_id, ctx, by=1, limit=None, timeout=None):
