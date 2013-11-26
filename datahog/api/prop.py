@@ -7,7 +7,8 @@ from ..const import context, table, util
 from ..db import query, txn
 
 
-__all__ = ['set', 'get', 'increment', 'add_flags', 'clear_flags', 'remove']
+__all__ = ['set', 'get', 'get_list', 'increment', 'add_flags', 'clear_flags',
+        'remove']
 
 
 _missing = object()

@@ -10,7 +10,8 @@ from ..const import table, util
 from ..db import query, txn
 
 
-__all__ = ['set', 'lookup', 'list', 'add_flags', 'clear_flags', 'remove']
+__all__ = ['set', 'lookup', 'list', 'add_flags', 'clear_flags', 'shift',
+        'remove']
 
 
 def set(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
