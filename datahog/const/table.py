@@ -13,6 +13,8 @@ def _set_table(title, value, table_name):
     REVERSE[value] = title
     NAMES[value] = table_name
 
+    return value
+
 
 _set_table("ENTITY", 1, "entity")
 _set_table("NODE", 2, "node")

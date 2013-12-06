@@ -90,3 +90,5 @@ def set_context(title, value, tbl, meta=None):
             import fuzzy
 
     META[value] = (title, tbl, meta)
+
+    return value

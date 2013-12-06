@@ -32,3 +32,5 @@ def set_flag(title, value, ctx):
 
     meta = META.setdefault(ctx, {})
     meta[value] = title
+
+    return value
