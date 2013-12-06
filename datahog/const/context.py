@@ -10,12 +10,8 @@ from . import search, storage, table
 META = {}
 
 
-def set_context(title, value, tbl, meta=None):
+def set_context(value, tbl, meta=None):
     '''create a constant for use in 'ctx'
-
-    :param str title:
-        the constant name. will be made available as
-        datahog.const.context.NAME.
 
     :param int value: the integer value to place in the 'ctx' column
 
@@ -62,8 +58,7 @@ def set_context(title, value, tbl, meta=None):
                 ``True`` (default ``False``) enables looser phonetic matching.
     '''
     if value in META:
-        raise ValueError("duplicate context values: %s, %s" %
-                (META[value][0], title))
+        raise ValueError("duplicate context value: %s" % value)
 
     if tbl not in table.REVERSE:
         raise ValueError("unrecognized table const: %r" % tbl)
@@ -82,13 +77,13 @@ def set_context(title, value, tbl, meta=None):
             raise ValueError("unrecognized storage type: %d" % meta['storage'])
 
         if 'schema' in meta:
-            meta['schema'] = type(title.title() + 'Schema', (mummy.Message,),
+            meta['schema'] = type('Schema', (mummy.Message,),
                     {'SCHEMA': meta['schema']})
 
         if meta.get('search') == search.PHONETIC:
             # just so that this blows up nice and early
             import fuzzy
 
-    META[value] = (title, tbl, meta)
+    META[value] = (tbl, meta)
 
     return value

@@ -10,14 +10,14 @@ from .. import error
 
 def ctx_tbl(ctx):
     "get the table a particular context is attached to"
-    return context.META.get(ctx, (None, None))[1]
+    return context.META.get(ctx, (None,))[0]
 
 
 def ctx_base_ctx(ctx):
     "get the context of a context's base_id object"
     if ctx not in context.META:
         return None
-    meta = context.META[ctx][2]
+    meta = context.META[ctx][1]
 
     if 'base_ctx' not in meta:
         return None
@@ -41,7 +41,7 @@ def ctx_rel_ctx(ctx):
     "return the table name for a context's rel_id"
     if ctx not in context.META:
         return None
-    meta = context.META[ctx][2]
+    meta = context.META[ctx][1]
 
     if 'rel_ctx' not in meta:
         return None
@@ -64,25 +64,25 @@ def ctx_rel_tblname(ctx):
 def ctx_storage(ctx):
     "return the storage type for a context"
     meta = context.META.get(ctx)
-    return meta and meta[2].get('storage')
+    return meta and meta[1].get('storage')
 
 
 def ctx_schema(ctx):
     "return the storage schema for a context (if present)"
     meta = context.META.get(ctx)
-    return meta and meta[2].get('schema')
+    return meta and meta[1].get('schema')
 
 
 def ctx_search(ctx):
     "return the search class for a context (if present)"
     meta = context.META.get(ctx)
-    return meta and meta[2].get('search')
+    return meta and meta[1].get('search')
 
 
 def ctx_phonetic_loose(ctx):
     "return the 'phonetic_loose' context option"
     meta = context.META.get(ctx)
-    return meta and meta[2].get('phonetic_loose')
+    return meta and meta[1].get('phonetic_loose')
 
 
 def flags_to_int(ctx, flag_list):

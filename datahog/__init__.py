@@ -5,3 +5,7 @@ from __future__ import absolute_import
 from .api import alias, entity, name, node, prop, relationship
 from .const import *
 from .pool import *
+
+# set the table consts themselves here as well
+for val, title in table.items():
+    globals()[title] = val

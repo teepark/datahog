@@ -21,8 +21,8 @@ def set_flag(title, value, ctx):
     '''
     if ctx in META:
         if value in META[ctx]:
-            raise ValueError("duplicate flag values for context %s: %s, %s" %
-                    (context.META[ctx][0], META[ctx][value], title))
+            raise ValueError("duplicate flag values: %s, %s" %
+                    (META[ctx][value], title))
 
     if value < 1 or value > 16:
         raise ValueError("flag value outside of range (1, 16): %d" % value)
