@@ -6,14 +6,10 @@ NAMES = {}
 
 
 def _set_table(title, value, table_name):
-    if title in globals():
-        raise ValueError("context name already in use: %s" % title)
-
     if value in REVERSE:
         raise ValueError('duplicate table values: %s, %s' %
                 (REVERSE[value], title))
 
-    globals()[title] = value
     REVERSE[value] = title
     NAMES[value] = table_name
 

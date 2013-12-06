@@ -19,9 +19,6 @@ def set_flag(title, value, ctx):
     :parm int ctx:
         the context for which this flag value applies
     '''
-    if title in globals():
-        raise ValueError("flag name already in use: %s" % title)
-
     if ctx in META:
         if value in META[ctx]:
             raise ValueError("duplicate flag values for context %s: %s, %s" %
@@ -33,6 +30,5 @@ def set_flag(title, value, ctx):
     if ctx not in context.META:
         raise ValueError("unrecognized context const: %r" % ctx)
 
-    globals()[title] = value
     meta = META.setdefault(ctx, {})
     meta[value] = title

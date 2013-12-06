@@ -61,9 +61,6 @@ def set_context(title, value, tbl, meta=None):
                 for ``table.NAME`` and ``search.PHONETIC``, setting this to
                 ``True`` (default ``False``) enables looser phonetic matching.
     '''
-    if title in globals():
-        raise ValueError("context name already in use: %s" % title)
-
     if value in META:
         raise ValueError("duplicate context values: %s, %s" %
                 (META[value][0], title))
@@ -92,5 +89,4 @@ def set_context(title, value, tbl, meta=None):
             # just so that this blows up nice and early
             import fuzzy
 
-    globals()[title] = value
     META[value] = (title, tbl, meta)
