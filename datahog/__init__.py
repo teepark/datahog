@@ -7,5 +7,5 @@ from .const import *
 from .pool import *
 
 # set the table consts themselves here as well
-for val, title in table.items():
+for val, title in table.REVERSE.items():
     globals()[title] = val
