@@ -25,7 +25,7 @@ def set(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
 
     :param int ctx: the alias's context
 
-    :param str value: the alias value
+    :param unicode value: the alias value
 
     :param iterable flags:
         the flags to set in the event that the alias is newly created (this
@@ -79,7 +79,7 @@ def lookup(pool, value, ctx, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param str value: the alias value
+    :param unicode value: the alias value
 
     :param int ctx: the alias's context
 
@@ -92,7 +92,8 @@ def lookup(pool, value, ctx, timeout=None):
         ``flags`` keys), or None if there is no alias for the given
         ``ctx/value``
     '''
-    digest = hmac.new(pool.digestkey, value, hashlib.sha1).digest()
+    digest = hmac.new(pool.digestkey, value.encode('utf8'),
+            hashlib.sha1).digest()
     result = txn.lookup_alias(pool, digest, ctx, timeout)
 
     if result is not None:
@@ -153,7 +154,7 @@ def add_flags(pool, base_id, ctx, value, flags, timeout=None):
 
     :param int ctx: the alias's context
 
-    :param str value: string value of the alias
+    :param unicode value: value of the alias
 
     :param iterable flags: the flags to add
 
@@ -182,7 +183,7 @@ def add_flags(pool, base_id, ctx, value, flags, timeout=None):
 
     flags = util.flags_to_int(ctx, flags)
 
-    result = txn.add_alias_flags(pool, base_id, ctx, alias, flags, timeout)
+    result = txn.add_alias_flags(pool, base_id, ctx, value, flags, timeout)
 
     if result is None:
         return None
@@ -190,7 +191,7 @@ def add_flags(pool, base_id, ctx, value, flags, timeout=None):
     return util.int_to_flags(ctx, result)
 
 
-def clear_flags(pool, base_id, ctx, alias, flags, timeout=None):
+def clear_flags(pool, base_id, ctx, value, flags, timeout=None):
     '''remove flags from an existing alias
 
     :param ConnectionPool pool:
@@ -201,7 +202,7 @@ def clear_flags(pool, base_id, ctx, alias, flags, timeout=None):
 
     :param int ctx: the alias's context
 
-    :param str value: string value of the alias
+    :param unicode value: value of the alias
 
     :param iterable flags: the flags to clear
 
@@ -230,7 +231,7 @@ def clear_flags(pool, base_id, ctx, alias, flags, timeout=None):
 
     flags = util.flags_to_int(ctx, flags)
 
-    result = txn.clear_alias_flags(pool, base_id, ctx, alias, flags, timeout)
+    result = txn.clear_alias_flags(pool, base_id, ctx, value, flags, timeout)
 
     if result is None:
         return None
@@ -249,7 +250,7 @@ def shift(pool, base_id, ctx, value, index, timeout=None):
 
     :param int ctx: the alias's context
 
-    :param str value: string value of the alias
+    :param unicode value: value of the alias
 
     :param int index: the new index to which to move the alias
 
@@ -281,7 +282,7 @@ def remove(pool, base_id, ctx, value, timeout=None):
 
     :param int ctx: the alias's context
 
-    :param str value: string value of the alias
+    :param value: value of the alias
 
     :param timeout:
         maximum time in seconds that the method is allowed to take; the default

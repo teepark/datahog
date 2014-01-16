@@ -60,7 +60,7 @@ def set_context(value, tbl, meta=None):
     if value in META:
         raise ValueError("duplicate context value: %s" % value)
 
-    if tbl not in table.REVERSE:
+    if tbl not in table.NAMES:
         raise ValueError("unrecognized table const: %r" % tbl)
 
     if meta:

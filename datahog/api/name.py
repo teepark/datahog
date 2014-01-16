@@ -22,7 +22,7 @@ def create(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
 
     :param int ctx: the name's context
 
-    :param str value: the name text
+    :param unicode value: the name text
 
     :param iterable flags: the flags to set on the new name
 
@@ -67,7 +67,7 @@ def search(pool, value, ctx, limit=100, start=None, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param str value:
+    :param unicode value:
         the search query (usage of this depends on the configured search class
         for ``ctx``)
 
@@ -150,7 +150,7 @@ def add_flags(pool, base_id, ctx, value, flags, timeout=None):
 
     :param int ctx: the name's context
 
-    :param str value: the name value
+    :param unicode value: the name value
 
     :param iterable flags: the flags to add
 
@@ -198,7 +198,7 @@ def clear_flags(pool, base_id, ctx, value, flags, timeout=None):
 
     :param int ctx: the name's context
 
-    :param str value: the name value
+    :param unicode value: the name value
 
     :param iterable flags: the flags to clear
 
@@ -246,7 +246,7 @@ def shift(pool, base_id, ctx, value, index, timeout=None):
 
     :param int ctx: the name's context
 
-    :param str value: name string
+    :param unicode value: name string
 
     :param int index: the new zero-index position to which to move the name
 
@@ -278,7 +278,7 @@ def remove(pool, base_id, ctx, value, timeout=None):
 
     :param int ctx: the name's context
 
-    :param str value: string value of the name
+    :param unicode value: value of the name
 
     :param timeout:
         maximum time in seconds that the method is allowed to take; the default

@@ -180,7 +180,8 @@ def set_alias(pool, base_id, ctx, alias, flags, index, timeout):
         return _set_alias(pool, base_id, ctx, alias, flags, index, timer)
 
 def _set_alias(pool, base_id, ctx, alias, flags, index, timer):
-    digest = hmac.new(pool.digestkey, alias, hashlib.sha1).digest()
+    digest = hmac.new(pool.digestkey, alias.encode('utf8'),
+            hashlib.sha1).digest()
     digest_b64 = digest.encode('base64').strip()
 
     # look up pre-existing aliases on any but the current insert shard
@@ -267,7 +268,8 @@ def add_alias_flags(pool, base_id, ctx, alias, flags, timeout):
         return _add_alias_flags(pool, base_id, ctx, alias, flags, timer)
 
 def _add_alias_flags(pool, base_id, ctx, alias, flags, timer):
-    digest = hmac.new(pool.digestkey, alias, hashlib.sha1).digest()
+    digest = hmac.new(pool.digestkey, alias.encode('utf8'),
+            hashlib.sha1).digest()
     digest_b64 = digest.encode('base64').strip()
 
     for shard in pool.shards_for_lookup_hash(digest):
@@ -331,7 +333,8 @@ def clear_alias_flags(pool, base_id, ctx, alias, flags, timeout):
         return _clear_alias_flags(pool, base_id, ctx, alias, flags, timer)
 
 def _clear_alias_flags(pool, base_id, ctx, alias, flags, timer):
-    digest = hmac.new(pool.digestkey, alias, hashlib.sha1).digest()
+    digest = hmac.new(pool.digestkey, alias.encode('utf8'),
+            hashlib.sha1).digest()
     digest_b64 = digest.encode('base64').strip()
 
     for shard in pool.shards_for_lookup_hash(digest):
@@ -378,7 +381,7 @@ def _clear_alias_flags(pool, base_id, ctx, alias, flags, timer):
             timer.conn = conn
             try:
                 result = query.clear_flags(conn.cursor(), 'alias', flags,
-                        {'base_id': base_id, 'ctx': ctx})
+                        {'base_id': base_id, 'ctx': ctx, 'value': alias})
             finally:
                 timer.conn = None
 
@@ -398,7 +401,8 @@ def remove_alias(pool, base_id, ctx, alias, timeout):
         return _remove_alias(pool, base_id, ctx, alias, timer)
 
 def _remove_alias(pool, base_id, ctx, alias, timer):
-    digest = hmac.new(pool.digestkey, alias, hashlib.sha1).digest()
+    digest = hmac.new(pool.digestkey, alias.encode('utf8'),
+            hashlib.sha1).digest()
     digest_b64 = digest.encode('base64').strip()
 
     for shard in pool.shards_for_lookup_hash(digest):
@@ -728,7 +732,7 @@ def _create_name(pool, base_id, ctx, value, flags, index, timer):
     base_ctx = util.ctx_base_ctx(ctx)
 
     tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'create_name',
-            (base_id, ctx, value, flags, index))
+            (base_id, ctx, value.encode('ascii', 'ignore'), flags, index))
     conn = None
     try:
         with tpc as conn:
@@ -772,7 +776,8 @@ def _write_name_lookup(pool, tpc, base_id, ctx, value, flags, timer):
 
 
 def _write_prefix_lookup(pool, base_id, ctx, value, flags, timer):
-    with pool.get_by_shard(pool.shard_for_prefix_write(value)) as conn:
+    with pool.get_by_shard(
+            pool.shard_for_prefix_write(value.encode('utf8'))) as conn:
         timer.conn = conn
         try:
             return query.insert_prefix_lookup(
@@ -785,7 +790,7 @@ def _write_phonetic_lookups(pool, base_id, ctx, value, flags, timer):
     dm, dmalt = util.dmetaphone(value)
     shard1 = pool.shard_for_phonetic_write(dm)
     tpc = TwoPhaseCommit(pool, shard1, 'phonetic_lookup_writes',
-            (base_id, ctx, value, flags, shard1))
+            (base_id, ctx, value.encode('ascii', 'ignore'), flags, shard1))
 
     try:
         with tpc as conn:
@@ -843,7 +848,8 @@ def _search_prefix(pool, value, ctx, limit, start, timer):
     if start is None:
         start = ''
 
-    names, shards = [], list(pool.shards_for_lookup_prefix(value))
+    names = []
+    shards = list(pool.shards_for_lookup_prefix(value.encode('utf8')))
     for shard in shards:
         with pool.get_by_shard(shard) as conn:
             try:
@@ -924,12 +930,13 @@ def add_name_flags(pool, base_id, ctx, value, flags, timeout):
 
 
 def _add_name_flags(pool, base_id, ctx, value, flags, timer):
-    lookup_shard = _find_name_lookup_shard(pool, base_id, ctx, value, timer)
+    lookup_shard = _find_name_lookup_shard(pool, base_id, ctx,
+            value.encode('utf8'), timer)
     if lookup_shard is None:
         return None
 
     tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'add_name_flags',
-            (base_id, ctx, value, flags))
+            (base_id, ctx, value.encode('ascii', 'ignore'), flags))
 
     try:
         with tpc as conn:
@@ -964,12 +971,13 @@ def clear_name_flags(pool, base_id, ctx, value, flags, timeout):
 
 
 def _clear_name_flags(pool, base_id, ctx, value, flags, timer):
-    lookup_shard = _find_name_lookup_shard(pool, base_id, ctx, value, timer)
+    lookup_shard = _find_name_lookup_shard(pool, base_id, ctx,
+            value.encode('utf8'), timer)
     if lookup_shard is None:
         return None
 
     tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'clear_name_flags',
-            (base_id, ctx, value, flags))
+            (base_id, ctx, value.encode('ascii', 'ignore'), flags))
 
     try:
         with tpc as conn:
@@ -1134,10 +1142,11 @@ def remove_name(pool, base_id, ctx, value, timeout):
 
 
 def _remove_name(pool, base_id, ctx, value, timer):
-    lookup_shard = _find_name_lookup_shard(pool, base_id, ctx, value, timer)
+    lookup_shard = _find_name_lookup_shard(pool, base_id, ctx,
+            value.encode('utf8'), timer)
 
     tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'remove_name',
-            (base_id, ctx, value))
+            (base_id, ctx, value.encode('ascii', 'ignore')))
 
     try:
         with tpc as conn:

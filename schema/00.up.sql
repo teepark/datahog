@@ -26,7 +26,7 @@ create table property (
   time_removed timestamp default null,
   ctx smallint not null,
   num bigint default null,
-  value text default null,
+  value bytea default null,
   check (num is null or value is null)
 );
 
@@ -51,7 +51,7 @@ create index alias_idx on alias (
 ) where time_removed is null;
 
 create table alias_lookup (
-  hash varchar(20) not null,
+  hash bytea not null,
   flags smallint default 0 not null,
   time_removed timestamp default null,
   ctx smallint not null,
@@ -100,7 +100,7 @@ create table node (
   time_removed timestamp default null,
   ctx smallint not null,
   num bigint default null,
-  value text default null,
+  value bytea default null,
   check (num is null or value is null)
 );
 

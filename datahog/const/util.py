@@ -3,6 +3,7 @@
 from __future__ import absolute_import
 
 import mummy
+import psycopg2
 
 from . import context, flag, storage, table
 from .. import error
@@ -130,7 +131,7 @@ def storage_wrap(ctx, value):
     if st == storage.STR:
         if not isinstance(value, str):
             raise error.StorageClassError("STR requires str")
-        return value
+        return psycopg2.Binary(value)
 
     if st == storage.UTF:
         if not isinstance(value, unicode):
@@ -160,14 +161,17 @@ def storage_unwrap(ctx, value):
     if st is None:
         raise error.BadContext(ctx)
 
+    if st == storage.STR:
+        return str(value)
+
     if st == storage.UTF:
-        return st.decode("utf8")
+        return value.decode("utf8")
 
     if st == storage.SERIAL:
         schema = ctx_schema(ctx)
         if schema:
-            return schema.untransform(mummy.loads(value))
-        return mummy.loads(value)
+            return schema.untransform(mummy.loads(str(value)))
+        return mummy.loads(str(value))
 
     return value
 

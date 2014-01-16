@@ -2,6 +2,8 @@
 
 from __future__ import absolute_import
 
+import psycopg2
+
 from ..const import context, storage, table, util
 
 
@@ -248,6 +250,7 @@ where
 
 
 def select_alias_lookup(cursor, digest, ctx):
+    digest = psycopg2.Binary(digest)
     cursor.execute("""
 select base_id, flags
 from alias_lookup
@@ -287,11 +290,12 @@ limit %s
             'flags': flags,
             'ctx': ctx,
             'pos': pos,
-            'value': value
+            'value': value.decode('utf8'),
         } for flags, value, pos in cursor.fetchall()]
 
 
 def maybe_insert_alias_lookup(cursor, digest, ctx, base_id, flags):
+    digest = psycopg2.Binary(digest)
     cursor.execute("""
 with selectquery (base_id) as (
     select base_id
@@ -349,14 +353,14 @@ with existence as (
         and guid=%%s
         and ctx=%%s
 ), increment as (
-update alias
-set pos = pos + 1
-where
-    exists (select 1 from existence)
-    and time_removed is null
-    and base_id=%%s
-    and ctx=%%s
-    and pos >= %%s
+    update alias
+    set pos = pos + 1
+    where
+        exists (select 1 from existence)
+        and time_removed is null
+        and base_id=%%s
+        and ctx=%%s
+        and pos >= %%s
 )
 insert into alias (base_id, ctx, value, pos, flags)
 select %%s, %%s, %%s, %%s, %%s
@@ -424,6 +428,7 @@ select exists (select 1 from move)
 
 
 def remove_alias_lookup(cursor, digest, ctx, base_id):
+    digest = psycopg2.Binary(digest)
     cursor.execute("""
 update alias_lookup
 set time_removed=now()
@@ -465,8 +470,10 @@ select 1 from removal
 
 
 def remove_alias_lookups_multi(cursor, aliases):
-    flat_als = reduce(lambda a, b: a.extend(b) or a, aliases, [])
-    print "removing alias_lookups %r" % (aliases,)
+    flat = []
+    for digest, ctx in aliases:
+        flat.append(psycopg2.Binary(digest))
+        flat.append(ctx)
 
     cursor.execute("""
 update alias_lookup
@@ -475,7 +482,7 @@ where
     time_removed is null
     and (hash, ctx) in (%s)
 returning hash, ctx
-""" % (','.join('(%s, %s)' for x in aliases),), flat_als)
+""" % (','.join('(%s, %s)' for x in aliases),), flat)
 
     return cursor.fetchall()
 
