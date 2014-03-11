@@ -53,7 +53,7 @@ def set(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
         if anything in ``flags`` is not a registered flag associated with
         ``ctx``
 
-    :raises AlaisInUse:
+    :raises AliasInUse:
         if this ``ctx/value`` pair is already stored under a different
         ``base_id``
 
