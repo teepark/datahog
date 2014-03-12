@@ -141,11 +141,12 @@ def storage_wrap(ctx, value):
     if st == storage.SERIAL:
         schema = ctx_schema(ctx)
         if schema:
+            msg = schema(value)
             try:
-                return schema(value).dumps()
+                return msg.dumps()
             except schema.InvalidMessage:
                 raise error.StorageClassError(
-                        "SERIAL schema validation failed")
+                        "SERIAL schema validation failed", msg.message)
         try:
             return mummy.dumps(value)
         except TypeError:
