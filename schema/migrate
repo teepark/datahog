@@ -1,53 +1,66 @@
 #!/bin/env python
 """
-run this from the git repo, setup.py doesn't install it as a script
-
-usage:
-    ./schema/migrate <action> <migration> <user> <pass> <database> <shard>
-
-- action may be "recreate", "up" or "down"
-- migration is the name of the sql files to select (<migration>.up.sql and
-  <migration>.down.sql)
-- user is the database user
-- pass is the database password
-- database is the database name to use
-- shard is the shard number
+run this from the git repo; setup.py doesn't install it as a script
 """
 
+import argparse
 import os
 import sys
 
 import psycopg2
 
 
-def main(env, argv):
-    if len(argv) != 7:
-        sys.stderr.write("wrong number of arguments\n")
-        return 1
-
-    ex, forward, migration, user, pwd, dbname, shardnum = argv
-
-    if forward == 'recreate':
-        main(env, [ex, 'down', migration, user, pwd, dbname, shardnum])
-        main(env, [ex, 'up', migration, user, pwd, dbname, shardnum])
-        return 0
-
-    shardnum = int(shardnum)
+def getsql(migration, action, shard):
 
     # running this from the repo so we have the schema/ dir
     # without having to do setuptools-based package data nonsense
     here = os.path.dirname(os.path.abspath(__file__))
 
-    conn = psycopg2.connect(host='localhost', port=5432,
-            user=user, password=pwd, database=dbname)
+    with open('%s/%s.%s.sql' % (here, migration, action)) as fp:
+        return fp.read() % {
+            'start': max(shard << 56, 1),
+            'max': ((shard + 1) << 56)  - 1,
+        }
 
-    with conn, open('%s/%s.%s.sql' %
-            (here, migration, forward), 'r') as fp:
+
+def main(env, argv):
+    parser = argparse.ArgumentParser(prog='migrate')
+    parser.add_argument('-H', '--host', default='localhost',
+            help='postgresql host')
+    parser.add_argument('-P', '--port', type=int, default=5432,
+            help='postgresql port')
+    parser.add_argument('-u', '--user',help='postgresql user/role')
+    parser.add_argument('-p', '--password', default='',
+            help='postgresql user password')
+    parser.add_argument('-d', '--database', help='postgresql database name')
+    parser.add_argument('-s', '--shard', type=int,
+            help='shard number of connection')
+    parser.add_argument('action',
+            help='"recreate", "up", "down", "upsql", or "downsql"')
+    parser.add_argument('migration', help='migration number')
+    args = parser.parse_args(argv[1:])
+
+    if args.action == 'recreate':
+        extra = [
+            '-H', args.host,
+            '-P', str(args.port),
+            '-u', args.user,
+            '-p', args.password,
+            '-d', args.database,
+            '-s', str(args.shard)]
+        main(env, [sys.argv[0]] + extra + ['down', args.migration])
+        main(env, [sys.argv[0]] + extra + ['up', args.migration])
+        return 0
+
+    if args.action.endswith('sql'):
+        print getsql(args.migration, args.action[:-3], args.shard)
+        return 0
+
+    conn = psycopg2.connect(host=args.host, port=args.port,
+            user=args.user, password=args.password, database=args.database)
+    with conn:
         cursor = conn.cursor()
-        cursor.execute(fp.read() % {
-            'start': max(shardnum << 56, 1),
-            'max': ((shardnum + 1) << 56) - 1,
-        })
+        cursor.execute(getsql(args.migration, args.action, args.shard))
 
     return 0
 
