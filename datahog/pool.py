@@ -80,6 +80,11 @@ class ConnectionPool(object):
             Lookups by strings will be sharded on the HMAC digest of the
             string. Provide the key here.
 
+        ``connection_backoff`` (optional)
+            A generator function that yields floating point numbers. These are
+            the number of milliseconds to wait between connection attempts.
+            When the generator becomes exhausted retries will stop.
+
     :param bool readonly:
         Whether to disallow data-modifying methods against this connection
         pool. Can be useful for querying replication slaves to take some read
@@ -97,6 +102,9 @@ class ConnectionPool(object):
 
         self.shardbits = self._dbconf['shard_bits']
         self.digestkey = self._dbconf['digest_key']
+
+        if 'connection_backoff' in self._dbconf:
+            self.backoff = self._dbconf['connection_backoff']
 
     def _init_conf(self):
         conf = self._dbconf
@@ -134,10 +142,10 @@ class ConnectionPool(object):
                 self._start_conn(shard, ev)
 
     def wait_ready(self, timeout=None):
-        '''Block until all dB connections are ready
+        '''Block until all dB connections are ready (or have exhausted retries)
 
         :param timeout:
-            Maximum time to wait in seconds (the default None means no limit).
+            Maximum time to wait in seconds. the default None means no limit.
 
         :returns:
             A boolean indicating that all connections were successfully made.
@@ -233,6 +241,15 @@ class ConnectionPool(object):
         return self.get_by_shard(
                 self.shard_for_entity_write(), replace, timeout)
 
+    def backoff(self):
+        yield 0 # single immediate retry
+        jitter = 0.25
+        n = 10
+        for i in xrange(10):
+            # grow by a random factor between 1.75 and 2.25
+            n *= 2 + (jitter * (random.random() - 0.5))
+            yield n
+
     @contextlib.contextmanager
     def _replacement_context(self, conn):
         try:
@@ -254,16 +271,30 @@ class ConnectionPool(object):
         else:
             t.cancel()
 
+    def _try_conn(self, info):
+        try:
+            return psycopg2.connect(
+                    host=info['host'],
+                    port=info['port'],
+                    user=info['user'],
+                    password=info['password'],
+                    database=info['database'])
+        except psycopg2.OperationalError:
+            return None
+
     def _start_conn(self, shard, done):
         @self._background
         def f():
-            conn = psycopg2.connect(
-                    host=shard['host'],
-                    port=shard['port'],
-                    user=shard['user'],
-                    password=shard['password'],
-                    database=shard['database'])
-            self._conns[shard['shard']].put(conn)
+            conn = self._try_conn(shard)
+            if conn is None:
+                for pause in self.backoff():
+                    self._pause(pause)
+                    conn = self._try_conn(shard)
+                    if conn is not None:
+                        break
+
+            if conn is not None:
+                self._conns[shard['shard']].put(conn)
             done.set()
 
 
@@ -286,6 +317,10 @@ if greenhouse:
         @staticmethod
         def _ev():
             return greenhouse.Event()
+
+        @staticmethod
+        def _pause(ms):
+            greenhouse.pause_for(ms / 1000.0)
 
         def start(self):
             psycopg2.extensions.set_wait_callback(greenpsycopg2.wait_callback)
@@ -341,6 +376,10 @@ if gevent:
         @staticmethod
         def _ev():
             return gevent.event.Event()
+
+        @staticmethod
+        def _pause(ms):
+            gevent.sleep(ms / 1000.0)
 
         def start(self):
             psycopg2.extensions.set_wait_callback(_gevent_wait_callback)
