@@ -80,10 +80,12 @@ class ConnectionPool(object):
             Lookups by strings will be sharded on the HMAC digest of the
             string. Provide the key here.
 
-        ``connection_backoff`` (optional)
+        ``connection_backoff``
             A generator function that yields floating point numbers. These are
             the number of milliseconds to wait between connection attempts.
-            When the generator becomes exhausted retries will stop.
+            When the generator becomes exhausted retries will stop. This key is
+            optional, the default implementation performs exponential backoff
+            with random jitter, trying for a total of around 20 seconds.
 
     :param bool readonly:
         Whether to disallow data-modifying methods against this connection
