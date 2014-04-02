@@ -5,7 +5,7 @@ import os
 from setuptools import setup
 
 
-VERSION = (0, 0, 1, "")
+VERSION = (0, 0, 2, "")
 
 
 setup(
@@ -13,4 +13,5 @@ setup(
     description="a shardable postgresql-backed data store",
     packages=["datahog", "datahog.api", "datahog.const", "datahog.db"],
     version='.'.join(filter(None, map(str, VERSION))),
+    install_requires=['psycopg2', 'mummy'],
 )
