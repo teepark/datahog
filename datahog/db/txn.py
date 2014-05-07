@@ -1239,6 +1239,8 @@ def _remove_local_estates(shard, pool, cursor, estate, entity_base):
     while guids:
         if not entity_base:
             guids = query.remove_nodes(cursor, guids)
+            if not guids:
+                break
         entity_base = False
 
         query.remove_properties_multiple_bases(cursor, guids)
@@ -1264,6 +1266,8 @@ def _remove_local_estates(shard, pool, cursor, estate, entity_base):
                 s = pool.shard_by_guid(rel_id)
             else:
                 s = pool.shard_by_guid(base_id)
+            if s == shard:
+                continue
             item = (base_id, ctx, not forward, rel_id)
             estate.setdefault(s, (set(), set(), [], []))[2].append(item)
 
@@ -1325,6 +1329,7 @@ def _remove_entity(pool, guid, ctx, timer):
             (guid, ctx, shard))
     tpcs = [tpc]
 
+    conn = None
     try:
         with tpc as conn:
             timer.conn = conn
@@ -1332,7 +1337,8 @@ def _remove_entity(pool, guid, ctx, timer):
                 tpc.fail()
                 return False
     finally:
-        pool.put(conn)
+        if conn is not None:
+            pool.put(conn)
         timer.conn = None
 
     estates = {pool.shard_by_guid(guid): (set(), set(), [], [guid])}

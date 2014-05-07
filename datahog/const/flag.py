@@ -11,7 +11,7 @@ def set_flag(value, ctx):
     ''' create a constant for use in flags
 
     :param int value:
-        the "bit position" of this flag. must be between 1 and 16.
+        the "bit position" of this flag. must be between 1 and 16 inclusive.
 
     :parm int ctx:
         the context for which this flag value applies

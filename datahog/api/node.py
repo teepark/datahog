@@ -9,9 +9,9 @@ from ..const import context, storage, table, util
 from ..db import query, txn
 
 
-__all__ = ['create', 'get', 'batch_get', 'list_children', 'get_children',
-        'update', 'increment', 'add_flags', 'clear_flags', 'move', 'shift',
-        'remove']
+__all__ = ['create', 'get', 'batch_get', 'child_of', 'list_children',
+        'get_children', 'update', 'increment', 'add_flags', 'clear_flags',
+        'move', 'shift', 'remove']
 
 
 _missing = object()
@@ -163,6 +163,39 @@ def batch_get(pool, nid_ctx_pairs, timeout=None):
         results[order[node['guid']]] = node
 
     return results
+
+
+def child_of(pool, node_id, ctx, base_id, timeout=None):
+    '''determine whether a node's parent is a particular base_id
+
+    :param ConnectionPool pool:
+        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
+        getting a database connection
+
+    :param int node_id: the child node's guid
+
+    :param int ctx: the child node's context
+
+    :param int base_id: the parent guid
+
+    :param timeout:
+        maximum time in seconds to allow the method to block. default of
+        ``None`` means no limit.
+
+    :returns: boolean of whether the child exists
+
+    :raises BadContext:
+        if ``ctx`` isn't registered for ``table.NODE``, or doesn't have both
+        a ``base_ctx`` and ``storage`` configured
+    '''
+    if (util.ctx_tbl(ctx) != table.NODE
+            or util.ctx_base_ctx(ctx) is None
+            or util.ctx_storage(ctx) is None):
+        raise error.BadContext(ctx)
+
+    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+        return query.select_edge_exists(
+                conn.cursor(), node_id, ctx, base_id)
 
 
 def list_children(pool, base_id, ctx, limit=100, start=0, timeout=None):
@@ -434,7 +467,7 @@ def clear_flags(pool, node_id, ctx, flags, timeout=None):
     if util.ctx_tbl(ctx) != table.NODE:
         raise error.BadContext(ctx)
 
-    flags = util.flags_to_int(flags)
+    flags = util.flags_to_int(ctx, flags)
 
     with pool.get_by_guid(node_id, timeout=timeout) as conn:
         result = query.clear_flags(conn.cursor(), 'node', flags,

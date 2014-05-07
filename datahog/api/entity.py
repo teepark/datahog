@@ -7,7 +7,7 @@ from ..const import table, util
 from ..db import query, txn
 
 
-__all__ = ['create', 'get', 'add_flags', 'clear_flags', 'remove']
+__all__ = ['create', 'get', 'batch_get', 'add_flags', 'clear_flags', 'remove']
 
 
 def create(pool, ctx, flags=None, timeout=None):
@@ -44,7 +44,8 @@ def create(pool, ctx, flags=None, timeout=None):
     if util.ctx_tbl(ctx) != table.ENTITY:
         raise error.BadContext(ctx)
 
-    flagint = util.flags_to_int(ctx, flags or [])
+    flags = flags or set()
+    flagint = util.flags_to_int(ctx, flags)
 
     with pool.get_for_entity_write(timeout=timeout) as conn:
         return {
@@ -80,6 +81,50 @@ def get(pool, guid, ctx, timeout=None):
         ent['flags'] = util.int_to_flags(ctx, ent['flags'])
 
     return ent
+
+
+def batch_get(pool, eid_ctx_pairs, timeout=None):
+    '''retrieve a list of entities
+
+    :param ConnectionPool pool:
+        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
+        getting a database connection
+
+    :param list eid_ctx_pairs:
+        list of ``(guid, ctx)`` tuples describing the entities to fetch
+
+    :param timeout:
+        maximum time in seconds that the method is allowed to take: the default
+        of ``None`` means no limit
+
+    :returns:
+        a list of entity dicts containing ``guid``, ``ctx`` and ``flags`` keys.
+        for any ``(guid, ctx)`` pairs from ``eid_ctx_pairs`` for which no
+        entity could be found, a ``None`` will be in that position in the
+        results list.
+    '''
+    order = {eid: i for i, (eid, ctx) in enumerate(eid_ctx_pairs)}
+    groups = {}
+    for eid, ctx in eid_ctx_pairs:
+        groups.setdefault(pool.shard_by_guid(eid), []).append((eid, ctx))
+
+    if timeout is not None:
+        deadline = time.time() + timeout
+
+    ents = []
+    for shard, group in groups.iteritems():
+        with pool.get_by_shard(shard, timeout=timeout) as conn:
+            ents.extend(query.select_entities(conn.cursor(), group))
+
+        if timeout is not None:
+            timeout = deadline - time.time()
+
+    results = [None] * len(eid_ctx_pairs)
+    for ent in ents:
+        ent['flags'] = util.int_to_flags(ent['ctx'], ent['flags'])
+        results[order[ent['guid']]] = ent
+
+    return results
 
 
 def add_flags(pool, guid, ctx, flags, timeout=None):

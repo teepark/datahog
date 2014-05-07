@@ -10,8 +10,8 @@ from ..const import table, util
 from ..db import query, txn
 
 
-__all__ = ['set', 'lookup', 'list', 'add_flags', 'clear_flags', 'shift',
-        'remove']
+__all__ = ['set', 'lookup', 'list', 'batch', 'add_flags', 'clear_flags',
+        'shift', 'remove']
 
 
 def set(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
@@ -141,6 +141,52 @@ def list(pool, base_id, ctx, limit=100, start=0, timeout=None):
         pos = result.pop('pos')
 
     return results, pos + 1
+
+
+def batch(pool, bid_ctx_pairs, timeout=None):
+    '''perform a batch lookup of aliases under given base_ids
+
+    :param ConnectionPool pool:
+        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
+        getting a database connection
+
+    :param list bid_ctx_pairs:
+        a list of two-tuples each containing base_id and ctx. the first alias
+        for each base_id/ctx will come up in the results
+
+    :param timeout:
+        maximum time in seconds that the method is allowed to take; the default
+        of ``None`` means no limit
+
+    :returns:
+        a list of the same length as bid_ctx_pairs. if there exists one or more
+        alias for each base_id/ctx combination, then the first one (as a dict
+        with ``base_id``, ``ctx``, ``flags``, and ``value`` keys) shows up in
+        the result list in the same position as the corresponding pair in
+        ``bid_ctx_pairs``. if not, then that position is occupied by ``None``.
+    '''
+    order = {(bid, ctx): i for i, (bid, ctx) in enumerate(bid_ctx_pairs)}
+    groups = {}
+    for bid, ctx in bid_ctx_pairs:
+        groups.setdefault(pool.shard_by_guid(bid), []).append((bid, ctx))
+
+    if timeout is not None:
+        deadline = time.time() + timeout
+
+    aliases = []
+    for shard, group in groups.iteritems():
+        with pool.get_by_shard(shard, timeout=timeout) as conn:
+            aliases.extend(query.select_alias_batch(conn.cursor(), group))
+
+        if timeout is not None:
+            timeout = deadline - time.time()
+
+    results = [None] * len(bid_ctx_pairs)
+    for al in aliases:
+        al['flags'] = util.int_to_flags(al['ctx'], al['flags'])
+        results[order[(al['base_id'], al['ctx'])]] = al
+
+    return results
 
 
 def add_flags(pool, base_id, ctx, value, flags, timeout=None):

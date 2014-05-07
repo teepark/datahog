@@ -254,11 +254,13 @@ class ConnectionPool(object):
 
     @contextlib.contextmanager
     def _replacement_context(self, conn):
+        c = None
         try:
             with conn as c:
                 yield c
         finally:
-            self.put(c)
+            if c is not None:
+                self.put(c)
 
     @contextlib.contextmanager
     def _timeout_context(self, conn, timeout):

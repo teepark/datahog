@@ -36,6 +36,24 @@ where
     return {'guid': guid, 'ctx': ctx, 'flags': cursor.fetchone()[0]}
 
 
+def select_entities(cursor, guid_ctx_pairs):
+    flat_pairs = reduce(lambda a, b: a.extend(b) or a, guid_ctx_pairs, [])
+
+    cursor.execute("""
+select guid, ctx, flags
+from entity
+where
+    time_removed is null
+    and (guid, ctx) in (%s)
+""" % (','.join('(%s, %s)' for p in guid_ctx_pairs),), flat_pairs)
+
+    return [{
+            'guid': guid,
+            'ctx': ctx,
+            'flags': flags,
+        } for guid, ctx, flags in cursor.fetchall()]
+
+
 def remove_entity(cursor, guid, ctx):
     cursor.execute("""
 update entity
@@ -292,6 +310,33 @@ limit %s
             'pos': pos,
             'value': value.decode('utf8'),
         } for flags, value, pos in cursor.fetchall()]
+
+
+def select_alias_batch(cursor, pairs):
+    flat_pairs = reduce(lambda a, b: a.extend(b) or a, pairs, [])
+
+    cursor.execute("""
+with window_query as (
+  select base_id, flags, ctx, value, rank() over (
+    partition by base_id, ctx
+    order by pos
+  ) as r
+  from alias
+  where
+    time_removed is null
+    and (base_id, ctx) in (%s)
+)
+select base_id, flags, ctx, value
+from window_query
+where r=1
+""" % (','.join('(%s, %s)' for pair in pairs),), flat_pairs)
+
+    return [{
+            'base_id': base_id,
+            'flags': flags,
+            'ctx': ctx,
+            'value': value,
+        } for base_id, flags, ctx, value in cursor.fetchall()]
 
 
 def maybe_insert_alias_lookup(cursor, digest, ctx, base_id, flags):
@@ -811,7 +856,7 @@ def insert_edge(cursor, base_id, ctx, child_id, pos=None, base_ctx=None):
         and guid=%%s
         and ctx=%%s
 )''' % table.NAMES[util.ctx_tbl(base_ctx)]
-        where_params = (base_id, ctx)
+        where_params = (base_id, base_ctx)
 
     if pos is None:
         cursor.execute('''
@@ -876,6 +921,20 @@ where
     }
 
 
+def select_edge_exists(cursor, child_id, ctx, base_id):
+    cursor.execute("""
+select 1
+from edge
+where
+    time_removed is null
+    and child_id=%s
+    and ctx=%s
+    and base_id=%s
+""", (child_id, ctx, base_id))
+
+    return bool(cursor.rowcount)
+
+
 def select_nodes(cursor, guid_ctx_pairs):
     flat_pairs = reduce(lambda a, b: a.extend(b) or a, guid_ctx_pairs, [])
 
@@ -889,10 +948,10 @@ where
 """ % (','.join('(%s, %s)' for p in guid_ctx_pairs),), flat_pairs)
 
     return [{
-        'guid': guid,
-        'ctx': ctx,
-        'flags': flags,
-        'value': num if util.ctx_storage(ctx) == storage.INT else val,
+            'guid': guid,
+            'ctx': ctx,
+            'flags': flags,
+            'value': num if util.ctx_storage(ctx) == storage.INT else val,
         } for guid, ctx, flags, num, val in cursor.fetchall()]
 
 

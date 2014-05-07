@@ -120,6 +120,10 @@ create index edge_idx on edge (
   base_id, ctx, pos
 ) where time_removed is null;
 
+create index edge_child on edge (
+  child_id
+) where time_removed is null;
+
 
 -- NAMES --
 
