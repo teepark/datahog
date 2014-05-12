@@ -11,7 +11,7 @@ __all__ = ["activate", "deactivate", "reset", "connect_fail", "query_fail",
         "add_fetch_result", "eventlog", "CONNECT", "CONNECT_FAIL",
         "GET_CURSOR", "COMMIT", "ROLLBACK", "RESET", "TPC_BEGIN", "TPC_COMMIT",
         "TPC_ROLLBACK", "TPC_PREPARE", "FETCH_ONE", "FETCH_ALL", "ROWCOUNT",
-        "EXECUTE"]
+        "EXECUTE", "EXECUTE_FAILURE"]
 
 
 def activate():
@@ -72,13 +72,17 @@ class EXECUTE(object):
         self.args = tuple(args)
 
     def __repr__(self):
-        return '<EXECUTE pattern: %s, args: %r>' % (
-                hashlib.sha1(self.pattern).hexdigest()[:5], self.args)
+        return '<%s pattern: %s, args: %r>' % (
+                type(self).__name__,
+                hashlib.sha1(self.pattern).hexdigest()[:5],
+                self.args)
 
     def __eq__(self, other):
-        return (isinstance(other, EXECUTE) and
+        return (isinstance(other, type(self)) and
                 self.pattern == other.pattern and
                 self.args == other.args)
+class EXECUTE_FAILURE(EXECUTE):
+    pass
 
 
 class FakePGConn(object):
@@ -109,11 +113,12 @@ class FakePGConn(object):
 
 class FakePGCursor(object):
     def execute(self, pattern, args=()):
-        if _query_fail is not None:
-            raise _query_fail()
         args = tuple(
                 x.adapted if isinstance(x, type(psycopg2.Binary(''))) else x
                 for x in args)
+        if _query_fail is not None:
+            _log(EXECUTE_FAILURE(pattern, args))
+            raise _query_fail()
         _log(EXECUTE(pattern, args))
         _fetch[0] += 1
 

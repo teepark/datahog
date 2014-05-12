@@ -3,7 +3,7 @@
 from __future__ import absolute_import
 
 from .. import error
-from ..const import context, table, util
+from ..const import context, storage, table, util
 from ..db import query, txn
 
 
@@ -140,10 +140,13 @@ def get_list(pool, base_id, ctx_list=None, timeout=None):
         depending on whether the property exists for a given context.
     '''
     with pool.get_by_guid(base_id, timeout=timeout) as conn:
-        if ctx_list is None:
-            return query.select_all_properties(conn.cursor(), base_id)
-        else:
-            return query.select_properties(conn.cursor(), base_id, ctx_list)
+        results = query.select_properties(conn.cursor(), base_id, ctx_list)
+
+    for r in results:
+        if r is not None:
+            r['flags'] = util.int_to_flags(r['ctx'], r['flags'])
+         
+    return results
 
 
 def increment(pool, base_id, ctx, by=1, limit=None, timeout=None):
@@ -179,7 +182,7 @@ def increment(pool, base_id, ctx, by=1, limit=None, timeout=None):
     if pool.readonly:
         raise error.ReadOnly()
 
-    if util.ctx_storage(ctx) != context.INT:
+    if util.ctx_storage(ctx) != storage.INT:
         raise error.StorageClassError(
             'cannot increment a ctx that is not configured for INT')
 

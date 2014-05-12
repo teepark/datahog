@@ -89,42 +89,51 @@ where
     return True, value, flags
 
 
-def select_properties(cursor, base_id, ctxs):
+def select_properties(cursor, base_id, ctxs=None):
     cursor.execute("""
 select ctx, num, value, flags
 from property
 where
     time_removed is null
     and base_id=%%s
-    and ctx in (%s)
-""" % (','.join('%s' for c in sorted(ctxs)),), (base_id,) + tuple(ctxs))
+    %s
+""" % ('' if ctxs is None else
+            'and ctx in (%s)' % ','.join('%s' for c in ctxs),),
+        (base_id,) + tuple(ctxs or ()))
+
+    if ctxs is None:
+        return [{
+            'base_id': base_id,
+            'ctx': ctx,
+            'flags': flags,
+            'value': num if util.ctx_storage(ctx) == storage.INT else value,
+        } for ctx, num, value, flags in cursor.fetchall()]
 
     results = {ctx: {
             'base_id': base_id,
             'ctx': ctx,
             'flags': flags,
-            'value': (num if util.ctx_storage(ctx) == storage.INT
-                    else value),
+            'value': (
+                num if util.ctx_storage(ctx) == storage.INT else value),
         } for ctx, num, value, flags in cursor.fetchall()}
-
     return map(results.get, ctxs)
 
 
-def select_all_properties(cursor, base_id):
-    cursor.execute("""
-select ctx, num, value, flags
-from property
-where
-    time_removed is null
-    and base_id=%s
-""", (base_id,))
-
-    return [{
-            'base_id': base_id,
-            'ctx': ctx,
-            'flags': flags,
-            'value': (num if util.ctx_storage(ctx) == storage.INT else value),
-        } for ctx, num, value, flags in cursor.fetchall()]
+#def select_all_properties(cursor, base_id):
+#    cursor.execute("""
+#select ctx, num, value, flags
+#from property
+#where
+#    time_removed is null
+#    and base_id=%s
+#""", (base_id,))
+#
+#    return [{
+#            'base_id': base_id,
+#            'ctx': ctx,
+#            'flags': flags,
+#            'value': (num if util.ctx_storage(ctx) == storage.INT else value),
+#        } for ctx, num, value, flags in cursor.fetchall()]
 
 
 def upsert_property(cursor, base_id, ctx, value, flags):
@@ -148,7 +157,7 @@ with existencequery as (
 ),
 updatequery as (
     update property
-    set %s=%%s, %s=null, flags=%%s
+    set %s=%%s, %s=null
     where
         time_removed is null
         and base_id=%%s
@@ -168,7 +177,7 @@ select
     exists (select 1 from insertquery),
     exists (select 1 from updatequery)
 """ % (base_tbl, val_field, other_field, val_field),
-            (base_id, base_ctx, value, flags, base_id, ctx, base_id, ctx,
+            (base_id, base_ctx, value, base_id, ctx, base_id, ctx,
                 value, flags))
 
     return cursor.fetchone()

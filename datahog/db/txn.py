@@ -138,13 +138,11 @@ def set_property(conn, base_id, ctx, value, flags):
     cursor = conn.cursor()
     try:
         result = query.upsert_property(cursor, base_id, ctx, value, flags)
-        conn.commit()
         return result
 
     except psycopg2.IntegrityError:
         conn.rollback()
-        updated = query.update_property(cursor, base_id, ctx, value, flags)
-        conn.commit()
+        updated = query.update_property(cursor, base_id, ctx, value)
         return False, bool(updated)
 
 
