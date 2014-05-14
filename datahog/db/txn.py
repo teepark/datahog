@@ -155,16 +155,13 @@ def lookup_alias(pool, digest, ctx, timeout):
 
 def _lookup_alias(pool, digest, ctx, timer):
     for shard in pool.shards_for_lookup_hash(digest):
-        conn = pool.get_by_shard(shard, replace=False)
-        timer.conn = conn
-        try:
+        with pool.get_by_shard(shard) as conn:
+            timer.conn = conn
+
             alias = query.select_alias_lookup(conn.cursor(), digest, ctx)
             if alias is not None:
                 return alias
 
-        finally:
-            conn.rollback()
-            pool.put(conn)
             timer.conn = None
 
     return None
@@ -641,19 +638,26 @@ def _remove_relationship_pair(pool, base_id, rel_id, ctx, timer):
         pool.put(conn)
 
     with tpc.elsewhere():
-        with pool.get_by_guid(rel_id) as conn:
-            timer.conn = conn
-            try:
-                removed = query.remove_relationship(
-                        conn.cursor(), base_id, rel_id, ctx, False)
-            finally:
-                timer.conn = None
-
-            if not removed:
+        conn = pool.get_by_guid(rel_id, replace=False)
+        timer.conn = conn
+        # manually managing commits/rollbacks and replacing on the pool
+        # so we don't get an extra COMMIT when we just ROLLBACKed
+        try:
+            removed = query.remove_relationship(
+                    conn.cursor(), base_id, rel_id, ctx, False)
+        except Exception:
+            conn.rollback()
+            tpc.fail()
+            return False
+        else:
+            if removed:
+                conn.commit()
+            else:
                 conn.rollback()
                 tpc.fail()
-                return False
-            return True
+            return removed
+        finally:
+            pool.put(conn)
 
 
 def create_node(pool, base_id, ctx, value, index, flags, timeout):
@@ -873,6 +877,7 @@ def _phontoken(results):
     token = {}
     for r in results:
         token[r.pop('code')] = r['base_id']
+    return token
 
 def _search_phonetic(pool, value, ctx, limit, start, timer):
     if start is None:
@@ -1040,11 +1045,11 @@ def _find_phonetic_lookup_shards(pool, base_id, ctx, value, timer):
                     break
             finally:
                 timer.conn = None
-    else:
+    else: 
         return None
 
-    if dmalt is None or not util.ctx_phonetic_loose:
-        (dmshard, None)
+    if (dmalt is None) or not util.ctx_phonetic_loose:
+        return (dmshard, None)
 
     for shard in pool.shards_for_lookup_phonetic(dmalt):
         with pool.get_by_shard(shard) as conn:
@@ -1096,8 +1101,13 @@ def _apply_flags_to_prefix_lookup(
 
 def _apply_flags_to_phonetic_lookups(
         pool, lookup_shard, func, flags, base_id, ctx, value, timer, expected):
-    dm, dmalt = util.dmetaphone(value)
     dmshard, dmashard = lookup_shard
+
+    if dmashard is not None:
+        return _apply_flags_to_phonetic_lookups_both(pool, lookup_shard, func,
+                flags, base_id, ctx, value, timer, expected)
+
+    dm, dmalt = util.dmetaphone(value)
 
     with pool.get_by_shard(dmshard) as conn:
         timer.conn = conn
@@ -1112,23 +1122,72 @@ def _apply_flags_to_phonetic_lookups(
             conn.rollback()
             return False
 
-    if dmashard is None:
-        return True
+    return True
 
-    with pool.get_by_shard(dmashard) as conn:
-        timer.conn = conn
-        try:
+
+def _apply_flags_to_phonetic_lookups_both(
+        pool, lookup_shard, func, flags, base_id, ctx, value, timer, expected):
+    dmshard, dmashard = lookup_shard
+    dm, dmalt = util.dmetaphone(value)
+    tpc = TwoPhaseCommit(pool, dmshard, 'apply_flag_phonetic',
+            (base_id, ctx, flags))
+    conn = None
+    try:
+        with tpc as conn:
+            timer.conn = conn
             result = func(conn.cursor(), 'phonetic_lookup', flags,
-                    {'ctx': ctx, 'value': value, 'code': dmalt,
+                    {'ctx': ctx, 'value': value, 'code': dm,
                         'base_id': base_id})
-        finally:
-            timer.conn = None
 
-        if not result or result[0] != expected:
-            conn.rollback()
-            return False
+            if not result or result[0] != expected:
+                tpc.fail()
+                return False
+    finally:
+        if conn is not None:
+            pool.put(conn)
+        timer.conn = None
+
+    with tpc.elsewhere():
+        with pool.get_by_shard(dmashard) as conn:
+            timer.conn = conn
+            try:
+                result = func(conn.cursor(), 'phonetic_lookup', flags,
+                        {'ctx': ctx, 'value': value, 'code': dmalt,
+                            'base_id': base_id})
+            finally:
+                timer.conn = None
+
+            if not result or result[0] != expected:
+                tpc.fail()
+                conn.rollback()
+                return False
 
     return True
+
+
+def reorder_name(pool, base_id, ctx, value, index, timeout):
+    timer = Timer(pool, timeout, None)
+    if timeout is None:
+        return _reorder_name(pool, base_id, ctx, value, index, timer)
+    with timer:
+        return _reorder_name(pool, base_id, ctx, value, index, timer)
+
+def _reorder_name(pool, base_id, ctx, value, index, timer):
+    conn = pool.get_by_guid(base_id, replace=False)
+    try:
+        result = query.reorder_name(conn.cursor(), base_id, ctx, value, index)
+    except Exception:
+        conn.rollback()
+        raise
+    else:
+        if result:
+            conn.commit()
+        else:
+            conn.rollback()
+    finally:
+        pool.put(conn)
+
+    return result
 
 
 def remove_name(pool, base_id, ctx, value, timeout):
@@ -1189,29 +1248,56 @@ def _remove_prefix_lookup(pool, lookup_shard, base_id, ctx, value, timer):
 
 
 def _remove_phonetic_lookups(pool, lookup_shard, base_id, ctx, value, timer):
-    dm, dma = util.dmetaphone(value)
     dmshard, dmashard = lookup_shard
+
+    if dmashard is not None:
+        return _remove_phonetic_lookups_both(
+                pool, lookup_shard, base_id, ctx, value, timer)
+
+    dm, dma = util.dmetaphone(value)
 
     with pool.get_by_shard(dmshard) as conn:
         timer.conn = conn
         try:
-            result = query.remove_phonetic_lookup(
+            return query.remove_phonetic_lookup(
                     conn.cursor(), base_id, ctx, dm, value)
         finally:
             timer.conn = None
 
-    if not result or dmashard is None:
-        return result
+def _remove_phonetic_lookups_both(
+        pool, lookup_shard, base_id, ctx, value, timer):
+    dmshard, dmashard = lookup_shard
+    dm, dma = util.dmetaphone(value)
 
-    with pool.get_by_shard(dmashard) as conn:
+    tpc = TwoPhaseCommit(pool, dmshard, 'remove_phonetic_lookups',
+            (base_id, ctx, value.encode('ascii', 'ignore')))
+    conn = None
+    try:
+        with tpc as conn:
+            timer.conn = conn
+            if not query.remove_phonetic_lookup(
+                    conn.cursor(), base_id, ctx, dm, value):
+                return False
+    finally:
+        if conn is not None:
+            pool.put(conn)
+        timer.conn = None
+
+    with tpc.elsewhere():
+        conn = pool.get_by_shard(dmashard, replace=False)
         timer.conn = conn
         try:
-            result = query.remove_phonetic_lookup(
-                    conn.cursor(), base_id, ctx, dma, value)
+            if not query.remove_phonetic_lookup(
+                    conn.cursor(), base_id, ctx, dma, value):
+                tpc.fail()
+                conn.rollback()
+                return False
+            conn.commit()
         finally:
             timer.conn = None
+            pool.put(conn)
 
-    return result
+        return True
 
 
 def _remove_lookups(cursor, triples):

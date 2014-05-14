@@ -37,6 +37,7 @@ class TestCase(unittest.TestCase):
         reset()
 
     def tearDown(self):
+        self.assertEqual(len(self.p._conns[0]._data), 2)
         self.p = None
         datahog.context.META.clear()
         datahog.flag.META.clear()

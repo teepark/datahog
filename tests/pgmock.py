@@ -24,6 +24,8 @@ def reset():
     del eventlog[:]
     _fetch[0] = -1
     del _fetch[1][:]
+    connect_fail(None)
+    query_fail(None)
 
 _connect_fail = False
 _query_fail = None

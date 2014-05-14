@@ -263,8 +263,7 @@ def shift(pool, base_id, ctx, value, index, timeout=None):
     if pool.readonly:
         raise error.ReadOnly()
 
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
-        return query.reorder_name(conn.cursor(), base_id, ctx, value, index)
+    return txn.reorder_name(pool, base_id, ctx, value, index, timeout)
 
 
 def remove(pool, base_id, ctx, value, timeout=None):

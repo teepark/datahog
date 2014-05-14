@@ -119,23 +119,6 @@ where
     return map(results.get, ctxs)
 
 
-#def select_all_properties(cursor, base_id):
-#    cursor.execute("""
-#select ctx, num, value, flags
-#from property
-#where
-#    time_removed is null
-#    and base_id=%s
-#""", (base_id,))
-#
-#    return [{
-#            'base_id': base_id,
-#            'ctx': ctx,
-#            'flags': flags,
-#            'value': (num if util.ctx_storage(ctx) == storage.INT else value),
-#        } for ctx, num, value, flags in cursor.fetchall()]
-
-
 def upsert_property(cursor, base_id, ctx, value, flags):
     if util.ctx_storage(ctx) == storage.INT:
         val_field = 'num'
@@ -326,14 +309,14 @@ def select_alias_batch(cursor, pairs):
 
     cursor.execute("""
 with window_query as (
-  select base_id, flags, ctx, value, rank() over (
-    partition by base_id, ctx
-    order by pos
-  ) as r
-  from alias
-  where
-    time_removed is null
-    and (base_id, ctx) in (%s)
+    select base_id, flags, ctx, value, rank() over (
+        partition by base_id, ctx
+        order by pos
+    ) as r
+    from alias
+    where
+        time_removed is null
+        and (base_id, ctx) in (%s)
 )
 select base_id, flags, ctx, value
 from window_query

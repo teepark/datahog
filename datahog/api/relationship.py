@@ -141,7 +141,13 @@ def get(pool, ctx, base_id, rel_id, timeout=None):
     with pool.get_by_guid(base_id, timeout=timeout) as conn:
         rels = query.select_relationships(
                 conn.cursor(), base_id, ctx, True, 1, 0, rel_id)
-    return rels[0] if rels else None
+
+    rel = rels[0] if rels else None
+    if rel:
+        rel['flags'] = util.int_to_flags(ctx, rel['flags'])
+        rel.pop('pos')
+
+    return rel
 
 
 def add_flags(pool, base_id, rel_id, ctx, flags, timeout=None):
