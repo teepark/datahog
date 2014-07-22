@@ -136,25 +136,29 @@ def storage_wrap(ctx, value):
     if st == storage.UTF:
         if not isinstance(value, unicode):
             raise error.StorageClassError("UTF storage requires unicode")
-        return value.encode("utf8")
+        return psycopg2.Binary(value.encode("utf8"))
 
     if st == storage.SERIAL:
         schema = ctx_schema(ctx)
         if schema:
             msg = schema(value)
             try:
-                return msg.dumps()
+                value = msg.dumps()
             except schema.InvalidMessage:
                 raise error.StorageClassError(
                         "SERIAL schema validation failed", msg.message)
         try:
-            return mummy.dumps(value)
+            value = mummy.dumps(value)
         except TypeError:
             raise error.StorageClassError(
                     "SERIAL requires a serializable value")
+        return psycopg2.Binary(value)
 
 
     raise error.BadContext(ctx)
+
+
+_Binary = type(psycopg2.Binary(''))
 
 
 def storage_unwrap(ctx, value):
@@ -162,8 +166,13 @@ def storage_unwrap(ctx, value):
     if st is None:
         raise error.BadContext(ctx)
 
+    if isinstance(value, _Binary):
+        value = value.adapted
+    if isinstance(value, buffer):
+        value = str(value)
+
     if st == storage.STR:
-        return str(value)
+        return value
 
     if st == storage.UTF:
         return value.decode("utf8")
@@ -171,8 +180,8 @@ def storage_unwrap(ctx, value):
     if st == storage.SERIAL:
         schema = ctx_schema(ctx)
         if schema:
-            return schema.untransform(mummy.loads(str(value)))
-        return mummy.loads(str(value))
+            return schema.untransform(mummy.loads(value))
+        return mummy.loads(value)
 
     return value
 
