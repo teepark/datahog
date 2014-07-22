@@ -171,17 +171,15 @@ def storage_unwrap(ctx, value):
     if isinstance(value, buffer):
         value = str(value)
 
-    if st == storage.STR:
-        return value
-
     if st == storage.UTF:
-        return value.decode("utf8")
+        value = value.decode("utf8")
 
     if st == storage.SERIAL:
         schema = ctx_schema(ctx)
         if schema:
-            return schema.untransform(mummy.loads(value))
-        return mummy.loads(value)
+            value = schema.untransform(mummy.loads(value))
+        else:
+            value = mummy.loads(value)
 
     return value
 

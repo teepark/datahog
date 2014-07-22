@@ -5,7 +5,9 @@ import sys
 import unittest
 
 import datahog
+from datahog.const import util
 from datahog import error
+import mummy
 import psycopg2
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -493,6 +495,55 @@ where
 """, (123, 2, 15)),
             ROWCOUNT,
             COMMIT])
+
+    def test_storage_null(self):
+        datahog.set_context(3, datahog.PROPERTY, {
+            'base_ctx': 1, 'storage': datahog.storage.NULL
+        })
+
+        self.assertRaises(error.StorageClassError, util.storage_wrap, 3, 0)
+        self.assertEqual(util.storage_wrap(3, None), None)
+        self.assertEqual(util.storage_unwrap(3, None), None)
+
+    def test_storage_str(self):
+        datahog.set_context(4, datahog.PROPERTY, {
+            'base_ctx': 1, 'storage': datahog.storage.STR
+        })
+
+        self.assertRaises(error.StorageClassError, util.storage_wrap, 4, u'x')
+        self.assertEqual(
+                util.storage_wrap(4, 'test').adapted,
+                'test')
+        self.assertEqual(
+                util.storage_unwrap(4, psycopg2.Binary('testing')),
+                'testing')
+
+    def test_storage_utf(self):
+        datahog.set_context(5, datahog.PROPERTY, {
+            'base_ctx': 1, 'storage': datahog.storage.UTF
+        })
+
+        self.assertRaises(error.StorageClassError, util.storage_wrap, 5, 'no')
+        self.assertEqual(
+                util.storage_wrap(5, u'testing').adapted,
+                u'testing'.encode('utf8'))
+
+        self.assertEqual(
+                util.storage_unwrap(5, psycopg2.Binary('testing')),
+                u'testing')
+
+    def test_storage_serial(self):
+        datahog.set_context(6, datahog.PROPERTY, {
+            'base_ctx': 1, 'storage': datahog.storage.SERIAL,
+        })
+
+        self.assertEqual(
+                util.storage_wrap(6, ['test', 'path', {10: 0.1}]).adapted,
+                mummy.dumps(['test', 'path', {10: 0.1}]))
+
+        self.assertEqual(
+                util.storage_unwrap(6, psycopg2.Binary('\x10\x03\x08\x04test\x08\x04path\x13\x01\x02\n\x07?\xb9\x99\x99\x99\x99\x99\x9a')),
+                ['test', 'path', {10: 0.1}])
 
 
 if __name__ == '__main__':
