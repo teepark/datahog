@@ -413,6 +413,16 @@ returning flags
             FETCH_ALL,
             COMMIT])
 
+    def test_add_flags_no_prop(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+        add_fetch_result([])
+
+        self.assertEqual(
+                datahog.prop.add_flags(self.p, 123, 2, [1, 3]),
+                None)
+
     def test_clear_flags(self):
         datahog.set_flag(1, 2)
         datahog.set_flag(2, 2)
@@ -434,6 +444,16 @@ returning flags
 """, (3, 2, 123)),
             FETCH_ALL,
             COMMIT])
+
+    def test_clear_flags_no_prop(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+        add_fetch_result([])
+
+        self.assertEqual(
+                datahog.prop.clear_flags(self.p, 123, 2, [1, 3]),
+                None)
 
     def test_remove_success(self):
         add_fetch_result([None]) # just a rowcount

@@ -420,6 +420,17 @@ returning flags
             COMMIT,
             TPC_COMMIT])
 
+    def test_add_flags_no_rel(self):
+        datahog.set_flag(1, 3)
+        datahog.set_flag(2, 3)
+        datahog.set_flag(3, 3)
+
+        add_fetch_result([])
+
+        self.assertEqual(
+                datahog.relationship.add_flags(self.p, 123, 456, 3, [1, 3]),
+                None)
+
     def test_clear_flags(self):
         datahog.set_flag(1, 3)
         datahog.set_flag(2, 3)
@@ -454,6 +465,17 @@ returning flags
             FETCH_ALL,
             COMMIT,
             TPC_COMMIT])
+
+    def test_clear_flags_no_rel(self):
+        datahog.set_flag(1, 3)
+        datahog.set_flag(2, 3)
+        datahog.set_flag(3, 3)
+
+        add_fetch_result([])
+
+        self.assertEqual(
+                datahog.relationship.clear_flags(self.p, 123, 456, 3, [1, 3]),
+                None)
 
     def test_shift(self):
         add_fetch_result([(True,)])

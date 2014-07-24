@@ -424,7 +424,7 @@ def add_flags(pool, node_id, ctx, flags, timeout=None):
         result = query.add_flags(conn.cursor(), 'node', flags,
                 {'guid': node_id, 'ctx': ctx})
 
-    if result is None:
+    if not result:
         return None
 
     return util.int_to_flags(ctx, result[0])
@@ -473,7 +473,7 @@ def clear_flags(pool, node_id, ctx, flags, timeout=None):
         result = query.clear_flags(conn.cursor(), 'node', flags,
                 {'guid': node_id, 'ctx': ctx})
 
-    if result is None:
+    if not result:
         return None
 
     return util.int_to_flags(ctx, result[0])

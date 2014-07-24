@@ -135,6 +135,15 @@ returning flags
             FETCH_ALL,
             COMMIT])
 
+    def test_add_flags_no_ent(self):
+        datahog.set_flag(1, 1)
+        datahog.set_flag(2, 1)
+        datahog.set_flag(3, 1)
+        add_fetch_result([])
+        self.assertEqual(
+                datahog.entity.add_flags(self.p, 18, 1, set([1, 3])),
+                None)
+
     def test_add_flags_one_already_present(self):
         datahog.set_flag(1, 1)
         datahog.set_flag(2, 1)
@@ -176,6 +185,16 @@ returning flags
 """, [6, 17, 1]),
             FETCH_ALL,
             COMMIT])
+
+    def test_clear_flags_no_ent(self):
+        datahog.set_flag(1, 1)
+        datahog.set_flag(2, 1)
+        datahog.set_flag(3, 1)
+        add_fetch_result([])
+
+        self.assertEqual(
+                datahog.entity.clear_flags(self.p, 18, 1, set([2, 3])),
+                None)
 
     def test_remove_lone_ent(self):
         add_fetch_result([None]) # query.remove_entity rowcount

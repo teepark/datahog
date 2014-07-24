@@ -435,6 +435,16 @@ returning flags
             FETCH_ALL,
             COMMIT])
 
+    def test_add_flags_no_node(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+        add_fetch_result([])
+
+        self.assertEqual(
+                datahog.node.add_flags(self.p, 1234, 2, set([1, 3])),
+                None)
+
     def test_add_flags_one_already_present(self):
         datahog.set_flag(1, 2)
         datahog.set_flag(2 ,2)
@@ -480,6 +490,16 @@ returning flags
 """, (6, 1234, 2)),
             FETCH_ALL,
             COMMIT])
+
+    def test_clear_flags_no_node(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+        add_fetch_result([])
+
+        self.assertEqual(
+                datahog.node.clear_flags(self.p, 1234, 2, set([2, 3])),
+                None)
 
     def test_shift(self):
         add_fetch_result([(True,)])

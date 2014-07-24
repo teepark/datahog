@@ -377,6 +377,18 @@ returning flags
             COMMIT,
             TPC_COMMIT])
 
+    def test_add_flags_no_alias(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+
+        add_fetch_result([(123, 5)])
+        add_fetch_result([])
+
+        self.assertEqual(
+                datahog.alias.add_flags(self.p, 123, 2, 'value', [1, 3]),
+                None)
+
     def test_clear_flags(self):
         datahog.set_flag(1, 2)
         datahog.set_flag(2, 2)
@@ -426,6 +438,18 @@ returning flags
             FETCH_ALL,
             COMMIT,
             TPC_COMMIT])
+
+    def test_clear_flags_no_alias(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+
+        add_fetch_result([(123, 5)])
+        add_fetch_result([])
+
+        self.assertEqual(
+                datahog.alias.clear_flags(self.p, 123, 2, 'value', [1, 3]),
+                None)
 
     def test_shift(self):
         add_fetch_result([(True,)])

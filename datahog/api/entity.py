@@ -169,7 +169,7 @@ def add_flags(pool, guid, ctx, flags, timeout=None):
         result = query.add_flags(
                 conn.cursor(), 'entity', flags, {'guid': guid, 'ctx': ctx})
 
-    if result is None:
+    if not result:
         return None
 
     return util.int_to_flags(ctx, result[0])
@@ -215,7 +215,7 @@ def clear_flags(pool, guid, ctx, flags, timeout=None):
         result = query.clear_flags(
                 conn.cursor(), 'entity', flags, {'guid': guid, 'ctx': ctx})
 
-    if result is None:
+    if not result:
         return None
 
     return util.int_to_flags(ctx, result[0])
