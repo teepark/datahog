@@ -477,6 +477,111 @@ returning flags
                 datahog.relationship.clear_flags(self.p, 123, 456, 3, [1, 3]),
                 None)
 
+    def test_set_flags_add(self):
+        datahog.set_flag(1, 3)
+        datahog.set_flag(2, 3)
+        datahog.set_flag(3, 3)
+
+        add_fetch_result([(5,)])
+        add_fetch_result([(5,)])
+
+        self.assertEqual(
+                datahog.relationship.set_flags(self.p, 123, 456, 3, [1, 3], []),
+                set([1, 3]))
+
+        self.assertEqual(eventlog, [
+            TPC_BEGIN,
+            GET_CURSOR,
+            EXECUTE("""
+update relationship
+set flags=flags | %s
+where time_removed is null and forward=%s and rel_id=%s and ctx=%s and base_id=%s
+returning flags
+""", (5, True, 456, 3, 123)),
+            FETCH_ALL,
+            TPC_PREPARE,
+            RESET,
+            GET_CURSOR,
+            EXECUTE("""
+update relationship
+set flags=flags | %s
+where time_removed is null and forward=%s and rel_id=%s and ctx=%s and base_id=%s
+returning flags
+""", (5, False, 456, 3, 123)),
+            FETCH_ALL,
+            COMMIT,
+            TPC_COMMIT])
+
+    def test_set_flags_clear(self):
+        datahog.set_flag(1, 3)
+        datahog.set_flag(2, 3)
+        datahog.set_flag(3, 3)
+
+        add_fetch_result([(4,)])
+        add_fetch_result([(4,)])
+
+        self.assertEqual(
+                datahog.relationship.set_flags(self.p, 123, 456, 3, [], [1, 2]),
+                set([3]))
+
+        self.assertEqual(eventlog, [
+            TPC_BEGIN,
+            GET_CURSOR,
+            EXECUTE("""
+update relationship
+set flags=flags & ~%s
+where time_removed is null and forward=%s and rel_id=%s and ctx=%s and base_id=%s
+returning flags
+""", (3, True, 456, 3, 123)),
+            FETCH_ALL,
+            TPC_PREPARE,
+            RESET,
+            GET_CURSOR,
+            EXECUTE("""
+update relationship
+set flags=flags & ~%s
+where time_removed is null and forward=%s and rel_id=%s and ctx=%s and base_id=%s
+returning flags
+""", (3, False, 456, 3, 123)),
+            FETCH_ALL,
+            COMMIT,
+            TPC_COMMIT])
+
+    def test_set_flags_both(self):
+        datahog.set_flag(1, 3)
+        datahog.set_flag(2, 3)
+        datahog.set_flag(3, 3)
+
+        add_fetch_result([(5,)])
+        add_fetch_result([(5,)])
+
+        self.assertEqual(
+                datahog.relationship.set_flags(self.p, 123, 456, 3, [1, 3], [2]),
+                set([1, 3]))
+
+        self.assertEqual(eventlog, [
+            TPC_BEGIN,
+            GET_CURSOR,
+            EXECUTE("""
+update relationship
+set flags=(flags & ~%s) | %s
+where time_removed is null and forward=%s and rel_id=%s and ctx=%s and base_id=%s
+returning flags
+""", (2, 5, True, 456, 3, 123)),
+            FETCH_ALL,
+            TPC_PREPARE,
+            RESET,
+            GET_CURSOR,
+            EXECUTE("""
+update relationship
+set flags=(flags & ~%s) | %s
+where time_removed is null and forward=%s and rel_id=%s and ctx=%s and base_id=%s
+returning flags
+""", (2, 5, False, 456, 3, 123)),
+            FETCH_ALL,
+            COMMIT,
+            TPC_COMMIT])
+
     def test_shift(self):
         add_fetch_result([(True,)])
 

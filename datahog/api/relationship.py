@@ -182,21 +182,7 @@ def add_flags(pool, base_id, rel_id, ctx, flags, timeout=None):
         if ``flags`` contains something that is not a registered flag
         associated with ``ctx``
     '''
-    if pool.readonly:
-        raise error.ReadOnly()
-
-    if util.ctx_tbl(ctx) != table.RELATIONSHIP:
-        raise error.BadContext(ctx)
-
-    flags = util.flags_to_int(ctx, flags)
-
-    result = txn.add_relationship_flags(
-            pool, base_id, rel_id, ctx, flags, timeout)
-
-    if result is None:
-        return None
-
-    return util.int_to_flags(ctx, result)
+    return set_flags(pool, base_id, rel_id, ctx, flags, [], timeout)
 
 
 def clear_flags(pool, base_id, rel_id, ctx, flags, timeout=None):
@@ -212,7 +198,44 @@ def clear_flags(pool, base_id, rel_id, ctx, flags, timeout=None):
 
     :param int ctx: the relationship's context
 
-    :param iterable flags: the flags to add
+    :param iterable flags: the flags to clear
+
+    :param timeout:
+        maximum time in seconds that the method is allowed to take; the default
+        of ``None`` means no limit
+
+    :returns:
+        the new set of flags, or None if there is no relationship for the given
+        ``base_id/rel_id/ctx``
+
+    :raises ReadOnly: if given a read-only pool
+
+    :raises BadContext:
+        if the ``ctx`` is not a registered context for table.RELATIONSHIP
+
+    :raises BadFlag:
+        if ``flags`` contains something that is not a registered flag
+        associated with ``ctx``
+    '''
+    return set_flags(pool, base_id, rel_id, ctx, [], flags, timeout)
+
+
+def set_flags(pool, base_id, rel_id, ctx, add, clear, timeout=None):
+    '''remove flags from a relationship
+
+    :param ConnectionPool pool:
+        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
+        getting a database connection
+
+    :param int base_id: the guid of the object at one end
+
+    :param int rel_id: the guid of the object at the other end
+
+    :param int ctx: the relationship's context
+
+    :param iterable add: the flags to add
+
+    :param iterable clear: the flags to clear
 
     :param timeout:
         maximum time in seconds that the method is allowed to take; the default
@@ -237,10 +260,11 @@ def clear_flags(pool, base_id, rel_id, ctx, flags, timeout=None):
     if util.ctx_tbl(ctx) != table.RELATIONSHIP:
         raise error.BadContext(ctx)
 
-    flags = util.flags_to_int(ctx, flags)
+    add = util.flags_to_int(ctx, add)
+    clear = util.flags_to_int(ctx, clear)
 
-    result = txn.clear_relationship_flags(
-            pool, base_id, rel_id, ctx, flags, timeout)
+    result = txn.set_relationship_flags(
+            pool, base_id, rel_id, ctx, add, clear, timeout)
 
     if result is None:
         return None

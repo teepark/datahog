@@ -196,6 +196,85 @@ returning flags
                 datahog.entity.clear_flags(self.p, 18, 1, set([2, 3])),
                 None)
 
+    def test_set_flags_add(self):
+        datahog.set_flag(1, 1)
+        datahog.set_flag(2, 1)
+        datahog.set_flag(3, 1)
+        add_fetch_result([(6,)])
+
+        self.assertEqual(
+                datahog.entity.set_flags(self.p, 17, 1, [2, 3], []),
+                set([2, 3]))
+
+        self.assertEqual(eventlog, [
+            GET_CURSOR,
+            EXECUTE("""
+update entity
+set flags=flags | %s
+where
+    time_removed is null
+    and guid=%s and ctx=%s
+returning flags
+""", [6, 17, 1]),
+            FETCH_ALL,
+            COMMIT])
+
+    def test_set_flags_clear(self):
+        datahog.set_flag(1, 1)
+        datahog.set_flag(2, 1)
+        datahog.set_flag(3, 1)
+        add_fetch_result([(4,)])
+
+        self.assertEqual(
+                datahog.entity.set_flags(self.p, 17, 1, [], [1, 2]),
+                set([3]))
+
+        self.assertEqual(eventlog, [
+            GET_CURSOR,
+            EXECUTE("""
+update entity
+set flags=flags & ~%s
+where
+    time_removed is null
+    and guid=%s and ctx=%s
+returning flags
+""", [3, 17, 1]),
+            FETCH_ALL,
+            COMMIT])
+
+    def test_set_flags_both(self):
+        datahog.set_flag(1, 1)
+        datahog.set_flag(2, 1)
+        datahog.set_flag(3, 1)
+        add_fetch_result([(6,)])
+
+        self.assertEqual(
+                datahog.entity.set_flags(self.p, 17, 1, [2, 3], [1]),
+                set([2, 3]))
+
+        self.assertEqual(eventlog, [
+            GET_CURSOR,
+            EXECUTE("""
+update entity
+set flags=(flags & ~%s) | %s
+where
+    time_removed is null
+    and guid=%s and ctx=%s
+returning flags
+""", [1, 6, 17, 1]),
+            FETCH_ALL,
+            COMMIT])
+
+    def test_set_flags_no_ent(self):
+        datahog.set_flag(1, 1)
+        datahog.set_flag(2, 1)
+        datahog.set_flag(3, 1)
+        add_fetch_result([])
+
+        self.assertEqual(
+                datahog.entity.set_flags(self.p, 17, 1, [2, 3], []),
+                None)
+
     def test_remove_lone_ent(self):
         add_fetch_result([None]) # query.remove_entity rowcount
         add_fetch_result([]) # query.remove_properties_multiple_bases rowcount

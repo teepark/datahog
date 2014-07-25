@@ -225,22 +225,7 @@ def add_flags(pool, base_id, ctx, flags, timeout=None):
         if ``flags`` contains something that is not a registered flag
         associated with ``ctx``
     '''
-    if pool.readonly:
-        raise error.ReadOnly()
-
-    if util.ctx_tbl(ctx) != table.PROPERTY:
-        raise error.BadContext(ctx)
-
-    flags = util.flags_to_int(ctx, flags)
-
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
-        result = query.add_flags(conn.cursor(),
-                'property', flags, {'base_id': base_id, 'ctx': ctx})
-
-    if not result:
-        return None
-
-    return util.int_to_flags(ctx, result[0])
+    return set_flags(pool, base_id, ctx, flags, [], timeout)
 
 
 def clear_flags(pool, base_id, ctx, flags, timeout=None):
@@ -273,17 +258,54 @@ def clear_flags(pool, base_id, ctx, flags, timeout=None):
         if ``flags`` contains something that is not a registered flag
         associated with ``ctx``
     '''
+    return set_flags(pool, base_id, ctx, [], flags, timeout)
+
+
+def set_flags(pool, base_id, ctx, add, clear, timeout=None):
+    '''set and/or clear flags on a property
+
+    :param ConnectionPool pool:
+        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
+        getting a database connection
+
+    :param int base_id: the guid of the parent object
+
+    :param int ctx: the property's context
+
+    :param iterable add: the flags to add
+
+    :param iterable clear: the flags to clear
+
+    :param timeout:
+        maximum time in seconds that the method is allowed to take; the default
+        of ``None`` means no limit
+
+    :returns:
+        the new set of flags, or None if there is no property for the given
+        ``base_id/ctx``
+
+    :raises ReadOnly: if given a read-only pool
+
+    :raises BadContext:
+        if the ``ctx`` is not a registered context for table.PROPERTY
+
+    :raises BadFlag:
+        if ``flags`` contains something that is not a registered flag
+        associated with ``ctx``
+    '''
     if pool.readonly:
         raise error.ReadOnly()
 
     if util.ctx_tbl(ctx) != table.PROPERTY:
         raise error.BadContext(ctx)
 
-    flags = util.flags_to_int(ctx, flags)
+    add = util.flags_to_int(ctx, add)
+    clear = util.flags_to_int(ctx, clear)
 
     with pool.get_by_guid(base_id, timeout=timeout) as conn:
-        result = query.clear_flags(conn.cursor(),
-                'property', flags, {'base_id': base_id, 'ctx': ctx})
+        result = query.set_flags(
+                conn.cursor(), 'property', add, clear,
+                {'base_id': base_id, 'ctx': ctx})
 
     if not result:
         return None

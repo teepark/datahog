@@ -255,14 +255,14 @@ def _set_alias(pool, base_id, ctx, alias, flags, index, timer):
     return True
 
 
-def add_alias_flags(pool, base_id, ctx, alias, flags, timeout):
+def set_alias_flags(pool, base_id, ctx, alias, add, clear, timeout):
     timer = Timer(pool, timeout, None)
     if timeout is None:
-        return _add_alias_flags(pool, base_id, ctx, alias, flags, timer)
+        return _set_alias_flags(pool, base_id, ctx, alias, add, clear, timer)
     with timer:
-        return _add_alias_flags(pool, base_id, ctx, alias, flags, timer)
+        return _set_alias_flags(pool, base_id, ctx, alias, add, clear, timer)
 
-def _add_alias_flags(pool, base_id, ctx, alias, flags, timer):
+def _set_alias_flags(pool, base_id, ctx, alias, add, clear, timer):
     digest = hmac.new(pool.digestkey, alias.encode('utf8'),
             hashlib.sha1).digest()
     digest_b64 = digest.encode('base64').strip()
@@ -286,79 +286,14 @@ def _add_alias_flags(pool, base_id, ctx, alias, flags, timer):
     else:
         return None
 
-    tpc = TwoPhaseCommit(pool, lookup_shard, 'add_alias_flags',
-            (base_id, ctx, digest_b64, flags))
-    try:
-        with tpc as conn:
-            timer.conn = conn
-            cursor = conn.cursor()
-            result = query.add_flags(cursor, 'alias_lookup', flags,
-                    {'hash': digest, 'ctx': ctx})
-            if not result:
-                tpc.fail()
-                return None
-    finally:
-        pool.put(conn)
-        timer.conn = None
-
-    result_flags = result[0]
-
-    with tpc.elsewhere():
-        with pool.get_by_guid(base_id) as conn:
-            timer.conn = conn
-            try:
-                result = query.add_flags(conn.cursor(), 'alias', flags,
-                        {'base_id': base_id, 'ctx': ctx, 'value': alias})
-            finally:
-                timer.conn = None
-
-            if not result or result[0] != result_flags:
-                conn.rollback()
-                tpc.fail()
-                return None
-
-    return result_flags
-
-
-def clear_alias_flags(pool, base_id, ctx, alias, flags, timeout):
-    timer = Timer(pool, timeout, None)
-    if timeout is None:
-        return _clear_alias_flags(pool, base_id, ctx, alias, flags, timer)
-    with timer:
-        return _clear_alias_flags(pool, base_id, ctx, alias, flags, timer)
-
-def _clear_alias_flags(pool, base_id, ctx, alias, flags, timer):
-    digest = hmac.new(pool.digestkey, alias.encode('utf8'),
-            hashlib.sha1).digest()
-    digest_b64 = digest.encode('base64').strip()
-
-    for shard in pool.shards_for_lookup_hash(digest):
-        with pool.get_by_shard(shard) as conn:
-            timer.conn = conn
-            try:
-                owner = query.select_alias_lookup(conn.cursor(), digest, ctx)
-            finally:
-                timer.conn = None
-
-            if owner is None:
-                continue
-
-            if owner['base_id'] != base_id:
-                return None
-
-            lookup_shard = shard
-            break
-    else:
-        return None
-
-    tpc = TwoPhaseCommit(pool, lookup_shard, 'clear_alias_flags',
-            (base_id, ctx, digest_b64, flags))
+    tpc = TwoPhaseCommit(pool, lookup_shard, 'set_alias_flags',
+            (base_id, ctx, digest_b64, add, clear))
     try:
         with tpc as conn:
             cursor = conn.cursor()
             timer.conn = conn
             try:
-                result = query.clear_flags(cursor, 'alias_lookup', flags,
+                result = query.set_flags(cursor, 'alias_lookup', add, clear,
                         {'hash': digest, 'ctx': ctx})
             finally:
                 timer.conn = None
@@ -375,7 +310,7 @@ def _clear_alias_flags(pool, base_id, ctx, alias, flags, timer):
         with pool.get_by_guid(base_id) as conn:
             timer.conn = conn
             try:
-                result = query.clear_flags(conn.cursor(), 'alias', flags,
+                result = query.set_flags(conn.cursor(), 'alias', add, clear,
                         {'base_id': base_id, 'ctx': ctx, 'value': alias})
             finally:
                 timer.conn = None
@@ -514,23 +449,24 @@ def _create_relationship_pair(pool, base_id, rel_id, ctx, forw_idx, rev_idx,
     return True
 
 
-def add_relationship_flags(pool, base_id, rel_id, ctx, flags, timeout):
+def set_relationship_flags(pool, base_id, rel_id, ctx, add, clear, timeout):
     timer = Timer(pool, timeout, None)
     if timeout is None:
-        return _add_relationship_flags(
-                pool, base_id, rel_id, ctx, flags, timer)
+        return _set_relationship_flags(
+                pool, base_id, rel_id, ctx, add, clear, timer)
     with timer:
-        return _add_relationship_flags(
-                pool, base_id, rel_id, ctx, flags, timer)
+        return _set_relationship_flags(
+                pool, base_id, rel_id, ctx, add, clear, timer)
 
-def _add_relationship_flags(pool, base_id, rel_id, ctx, flags, timer):
+def _set_relationship_flags(pool, base_id, rel_id, ctx, add, clear, timer):
     tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id),
-            'add_relationship_flags', (base_id, rel_id, ctx, flags))
+            'set_relationship_flags', (base_id, rel_id, ctx, add, clear))
     try:
         with tpc as conn:
             timer.conn = conn
             try:
-                result = query.add_flags(conn.cursor(), 'relationship', flags,
+                result = query.set_flags(
+                        conn.cursor(), 'relationship', add, clear,
                         {'base_id': base_id, 'rel_id': rel_id, 'ctx': ctx,
                             'forward': True})
             finally:
@@ -549,56 +485,8 @@ def _add_relationship_flags(pool, base_id, rel_id, ctx, flags, timer):
         with pool.get_by_guid(rel_id) as conn:
             timer.conn = conn
             try:
-                result = query.add_flags(conn.cursor(), 'relationship', flags,
-                        {'base_id': base_id, 'rel_id': rel_id, 'ctx': ctx,
-                            'forward': False})
-            finally:
-                timer.conn = None
-
-            if not result or result[0] != result_flags:
-                conn.rollback()
-                tpc.fail()
-                return None
-
-    return result_flags
-
-
-def clear_relationship_flags(pool, base_id, rel_id, ctx, flags, timeout):
-    timer = Timer(pool, timeout, None)
-    if timeout is None:
-        return _clear_relationship_flags(
-                pool, base_id, rel_id, ctx, flags, timer)
-    with timer:
-        return _clear_relationship_flags(
-                pool, base_id, rel_id, ctx, flags, timer)
-
-def _clear_relationship_flags(pool, base_id, rel_id, ctx, flags, timer):
-    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id),
-            'clear_relationship_flags', (base_id, rel_id, ctx, flags))
-    try:
-        with tpc as conn:
-            timer.conn = conn
-            try:
-                result = query.clear_flags(conn.cursor(), 'relationship', flags,
-                        {'base_id': base_id, 'rel_id': rel_id, 'ctx': ctx,
-                            'forward': True})
-            finally:
-                timer.conn = None
-
-            if not result:
-                tpc.fail()
-                return None
-
-    finally:
-        pool.put(conn)
-
-    result_flags = result[0]
-
-    with tpc.elsewhere():
-        with pool.get_by_guid(rel_id) as conn:
-            timer.conn = conn
-            try:
-                result = query.clear_flags(conn.cursor(), 'relationship', flags,
+                result = query.set_flags(
+                        conn.cursor(), 'relationship', add, clear,
                         {'base_id': base_id, 'rel_id': rel_id, 'ctx': ctx,
                             'forward': False})
             finally:
@@ -924,27 +812,26 @@ def _search_phonetic(pool, value, ctx, limit, start, timer):
     return results[:limit], token
 
 
-def add_name_flags(pool, base_id, ctx, value, flags, timeout):
+def set_name_flags(pool, base_id, ctx, value, add, clear, timeout):
     timer = Timer(pool, timeout, None)
     if timeout is None:
-        return _add_name_flags(pool, base_id, ctx, value, flags, timer)
+        return _set_name_flags(pool, base_id, ctx, value, add, clear, timer)
     with timer:
-        return _add_name_flags(pool, base_id, ctx, value, flags, timer)
+        return _set_name_flags(pool, base_id, ctx, value, add, clear, timer)
 
-
-def _add_name_flags(pool, base_id, ctx, value, flags, timer):
+def _set_name_flags(pool, base_id, ctx, value, add, clear, timer):
     lookup_shard = _find_name_lookup_shard(pool, base_id, ctx,
             value.encode('utf8'), timer)
     if lookup_shard is None:
         return None
 
-    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'add_name_flags',
-            (base_id, ctx, value.encode('ascii', 'ignore'), flags))
+    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'set_name_flags',
+            (base_id, ctx, value.encode('ascii', 'ignore'), add, clear))
 
     try:
         with tpc as conn:
             timer.conn = conn
-            result = query.add_flags(conn.cursor(), 'name', flags,
+            result = query.set_flags(conn.cursor(), 'name', add, clear,
                     {'base_id': base_id, 'ctx': ctx, 'value': value})
             if not result:
                 tpc.fail()
@@ -957,50 +844,17 @@ def _add_name_flags(pool, base_id, ctx, value, flags, timer):
     result_flags = result[0]
 
     with tpc.elsewhere():
-        if not _apply_flags_to_lookup(pool, lookup_shard, query.add_flags,
-                flags, base_id, ctx, value, timer, result_flags):
-            tpc.fail()
-            return None
-
-    return result_flags
-
-
-def clear_name_flags(pool, base_id, ctx, value, flags, timeout):
-    timer = Timer(pool, timeout, None)
-    if timeout is None:
-        return _clear_name_flags(pool, base_id, ctx, value, flags, timer)
-    with timer:
-        return _clear_name_flags(pool, base_id, ctx, value, flags, timer)
-
-
-def _clear_name_flags(pool, base_id, ctx, value, flags, timer):
-    lookup_shard = _find_name_lookup_shard(pool, base_id, ctx,
-            value.encode('utf8'), timer)
-    if lookup_shard is None:
-        return None
-
-    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'clear_name_flags',
-            (base_id, ctx, value.encode('ascii', 'ignore'), flags))
-
-    try:
-        with tpc as conn:
-            timer.conn = conn
-            result = query.clear_flags(conn.cursor(), 'name', flags,
-                    {'base_id': base_id, 'ctx': ctx, 'value': value})
-            if not result:
-                tpc.fail()
+        sclass = util.ctx_search(ctx)
+        if sclass == search.PREFIX:
+            if not _apply_flags_to_prefix_lookup(pool, lookup_shard,
+                    add, clear, base_id, ctx, value, timer, result_flags):
                 return None
-
-    finally:
-        pool.put(conn)
-        timer.conn = None
-
-    result_flags = result[0]
-
-    with tpc.elsewhere():
-        if not _apply_flags_to_lookup(pool, lookup_shard, query.clear_flags,
-                flags, base_id, ctx, value, timer, result_flags):
-            return None
+        elif sclass == search.PHONETIC:
+            if not _apply_flags_to_phonetic_lookups(pool, lookup_shard,
+                    add, clear, base_id, ctx, value, timer, result_flags):
+                return None
+        else:
+            raise error.BadContext(ctx)
 
     return result_flags
 
@@ -1067,27 +921,13 @@ def _find_phonetic_lookup_shards(pool, base_id, ctx, value, timer):
     return dmshard, dmashard
 
 
-def _apply_flags_to_lookup(
-        pool, lookup_shard, func, flags, base_id, ctx, value, timer, expected):
-    sclass = util.ctx_search(ctx)
-
-    if sclass == search.PREFIX:
-        return _apply_flags_to_prefix_lookup(pool, lookup_shard, func, flags,
-                base_id, ctx, value, timer, expected)
-
-    if sclass == search.PHONETIC:
-        return _apply_flags_to_phonetic_lookups(pool, lookup_shard, func,
-                flags, base_id, ctx, value, timer, expected)
-
-    raise error.BadContext(ctx)
-
-
 def _apply_flags_to_prefix_lookup(
-        pool, lookup_shard, func, flags, base_id, ctx, value, timer, expected):
+        pool, lookup_shard, add, clear, base_id, ctx, value, timer, expected):
     with pool.get_by_shard(lookup_shard) as conn:
         timer.conn = conn
         try:
-            result = func(conn.cursor(), 'prefix_lookup', flags,
+            result = query.set_flags(
+                    conn.cursor(), 'prefix_lookup', add, clear,
                     {'base_id': base_id, 'ctx': ctx, 'value': value})
         finally:
             timer.conn = None
@@ -1099,21 +939,21 @@ def _apply_flags_to_prefix_lookup(
     return True
 
 
-def _apply_flags_to_phonetic_lookups(
-        pool, lookup_shard, func, flags, base_id, ctx, value, timer, expected):
+def _apply_flags_to_phonetic_lookups(pool, lookup_shard,
+        add, clear, base_id, ctx, value, timer, expected):
     dmshard, dmashard = lookup_shard
 
     if dmashard is not None:
-        return _apply_flags_to_phonetic_lookups_both(pool, lookup_shard, func,
-                flags, base_id, ctx, value, timer, expected)
+        return _apply_flags_to_phonetic_lookups_both(pool, lookup_shard,
+                add, clear, base_id, ctx, value, timer, expected)
 
     dm, dmalt = util.dmetaphone(value)
 
     with pool.get_by_shard(dmshard) as conn:
         timer.conn = conn
         try:
-            result = func(conn.cursor(), 'phonetic_lookup', flags,
-                    {'ctx': ctx, 'value': value, 'code': dm,
+            result = query.set_flags(conn.cursor(), 'phonetic_lookup',
+                    add, clear, {'ctx': ctx, 'value': value, 'code': dm,
                         'base_id': base_id})
         finally:
             timer.conn = None
@@ -1126,17 +966,17 @@ def _apply_flags_to_phonetic_lookups(
 
 
 def _apply_flags_to_phonetic_lookups_both(
-        pool, lookup_shard, func, flags, base_id, ctx, value, timer, expected):
+        pool, lookup_shard, add, clear, base_id, ctx, value, timer, expected):
     dmshard, dmashard = lookup_shard
     dm, dmalt = util.dmetaphone(value)
     tpc = TwoPhaseCommit(pool, dmshard, 'apply_flag_phonetic',
-            (base_id, ctx, flags))
+            (base_id, ctx, add, clear))
     conn = None
     try:
         with tpc as conn:
             timer.conn = conn
-            result = func(conn.cursor(), 'phonetic_lookup', flags,
-                    {'ctx': ctx, 'value': value, 'code': dm,
+            result = query.set_flags(conn.cursor(), 'phonetic_lookup',
+                    add, clear, {'ctx': ctx, 'value': value, 'code': dm,
                         'base_id': base_id})
 
             if not result or result[0] != expected:
@@ -1151,8 +991,8 @@ def _apply_flags_to_phonetic_lookups_both(
         with pool.get_by_shard(dmashard) as conn:
             timer.conn = conn
             try:
-                result = func(conn.cursor(), 'phonetic_lookup', flags,
-                        {'ctx': ctx, 'value': value, 'code': dmalt,
+                result = query.set_flags(conn.cursor(), 'phonetic_lookup',
+                        add, clear, {'ctx': ctx, 'value': value, 'code': dmalt,
                             'base_id': base_id})
             finally:
                 timer.conn = None

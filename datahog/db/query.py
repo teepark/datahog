@@ -1465,41 +1465,36 @@ returning base_id, ctx, value
     return cursor.fetchall()
 
 
-def add_flags(cursor, table, flags, where):
-    clause, values = ['time_removed is null'], [flags]
-    for key, value in where.items():
-        if value is None:
-            clause.append("%s is null" % key)
+def set_flags(cursor, table, add, clear, where):
+    if not add|clear:
+        return []
+
+    w_clause, w_values = ['time_removed is null'], []
+    s_clause, s_values = "", []
+    for key, val in where.items():
+        if val is None:
+            w_clause.append('%s is null' % key)
         else:
-            clause.append("%s=%%s" % key)
-            values.append(value)
-    clause = ' and '.join(clause)
+            w_clause.append('%s=%%s' % key)
+            w_values.append(val)
+    w_clause = ' and '.join(w_clause)
+
+    if clear:
+        s_clause = "flags & ~%s"
+        s_values.append(clear)
+
+    if add:
+        if clear:
+            s_clause = "(%s) | %%s" % (s_clause,)
+        else:
+            s_clause = "flags | %s"
+        s_values.append(add)
 
     cursor.execute("""
 update %s
-set flags=flags | %%s
+set flags=%s
 where %s
 returning flags
-""" % (table, clause), values)
-
-    return [x[0] for x in cursor.fetchall()]
-
-
-def clear_flags(cursor, table, flags, where):
-    clause, values = ['time_removed is null'], [flags]
-    for key, value in where.items():
-        if value is None:
-            clause.append("%s is null" % key)
-        else:
-            clause.append("%s=%%s" % key)
-            values.append(value)
-    clause = ' and '.join(clause)
-
-    cursor.execute("""
-update %s
-set flags=flags & ~%%s
-where %s
-returning flags
-""" % (table, clause), values)
+""" % (table, s_clause, w_clause), s_values + w_values)
 
     return [x[0] for x in cursor.fetchall()]

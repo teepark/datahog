@@ -171,20 +171,7 @@ def add_flags(pool, base_id, ctx, value, flags, timeout=None):
         if ``flags`` contains something that is not a registered flag
         associated with ``ctx``
     '''
-    if pool.readonly:
-        raise error.ReadOnly()
-
-    if util.ctx_tbl(ctx) != table.NAME:
-        raise error.BadContext(ctx)
-
-    flags = util.flags_to_int(ctx, flags)
-
-    result = txn.add_name_flags(pool, base_id, ctx, value, flags, timeout)
-
-    if result is None:
-        return None
-
-    return util.int_to_flags(ctx, result)
+    return set_flags(pool, base_id, ctx, value, flags, [], timeout)
 
 
 def clear_flags(pool, base_id, ctx, value, flags, timeout=None):
@@ -219,15 +206,53 @@ def clear_flags(pool, base_id, ctx, value, flags, timeout=None):
         if ``flags`` contains something that is not a registered flag
         associated with ``ctx``
     '''
+    return set_flags(pool, base_id, ctx, value, [], flags, timeout)
+
+
+def set_flags(pool, base_id, ctx, value, add, clear, timeout=None):
+    '''remove flags from an existing name
+
+    :param ConnectionPool pool:
+        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
+        getting a database connection
+
+    :param int base_id: the guid of the parent object
+
+    :param int ctx: the name's context
+
+    :param unicode value: the name value
+
+    :param iterable add: the flags to add
+
+    :param iterable clear: the flags to clear
+
+    :param timeout:
+        maximum time in seconds that the method is allowed to take; the default
+        of ``None`` means no limit
+
+    :returns:
+        the new set of flags, or None if there is no alias for the given
+        ``base_id/ctx/value``
+
+    :raises ReadOnly: if given a read-only pool
+
+    :raises BadContext:
+        if the ``ctx`` is not a registered context for table.NAME
+
+    :raises BadFlag:
+        if ``flags`` contains something that is not a registered flag
+        associated with ``ctx``
+    '''
     if pool.readonly:
         raise error.ReadOnly()
 
     if util.ctx_tbl(ctx) != table.NAME:
         raise error.BadContext(ctx)
 
-    flags = util.flags_to_int(ctx, flags)
+    add = util.flags_to_int(ctx, add)
+    clear = util.flags_to_int(ctx, clear)
 
-    result = txn.clear_name_flags(pool, base_id, ctx, value, flags, timeout)
+    result = txn.set_name_flags(pool, base_id, ctx, value, add, clear, timeout)
 
     if result is None:
         return None

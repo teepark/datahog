@@ -501,6 +501,85 @@ returning flags
                 datahog.node.clear_flags(self.p, 1234, 2, set([2, 3])),
                 None)
 
+    def test_set_flags_add(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+        add_fetch_result([(5,)])
+
+        self.assertEqual(
+                datahog.node.set_flags(self.p, 1234, 2, [1, 3], []),
+                set([1, 3]))
+
+        self.assertEqual(eventlog, [
+            GET_CURSOR,
+            EXECUTE("""
+update node
+set flags=flags | %s
+where
+    time_removed is null
+    and guid=%s and ctx=%s
+returning flags
+""", (5, 1234, 2)),
+            FETCH_ALL,
+            COMMIT])
+
+    def test_set_flags_clear(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+        add_fetch_result([(1,)])
+
+        self.assertEqual(
+                datahog.node.set_flags(self.p, 1234, 2, [], [2, 3]),
+                set([1]))
+
+        self.assertEqual(eventlog, [
+            GET_CURSOR,
+            EXECUTE("""
+update node
+set flags=flags & ~%s
+where
+    time_removed is null
+    and guid=%s and ctx=%s
+returning flags
+""", (6, 1234, 2)),
+            FETCH_ALL,
+            COMMIT])
+
+    def test_set_flags_both(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+        add_fetch_result([(2,)])
+
+        self.assertEqual(
+                datahog.node.set_flags(self.p, 1234, 2, [2], [1, 3]),
+                set([2]))
+
+        self.assertEqual(eventlog, [
+            GET_CURSOR,
+            EXECUTE("""
+update node
+set flags=(flags & ~%s) | %s
+where
+    time_removed is null
+    and guid=%s and ctx=%s
+returning flags
+""", (5, 2, 1234 ,2)),
+            FETCH_ALL,
+            COMMIT])
+
+    def test_set_flags_no_node(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+        add_fetch_result([])
+
+        self.assertEqual(
+                datahog.node.set_flags(self.p, 1234, 2, [2], [1, 3]),
+                None)
+
     def test_shift(self):
         add_fetch_result([(True,)])
 

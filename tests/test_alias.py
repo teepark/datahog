@@ -451,6 +451,168 @@ returning flags
                 datahog.alias.clear_flags(self.p, 123, 2, 'value', [1, 3]),
                 None)
 
+    def test_set_flags_add(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+
+        add_fetch_result([(123, 5)])
+        add_fetch_result([(5,)])
+        add_fetch_result([(5,)])
+
+        self.assertEqual(
+                datahog.alias.set_flags(self.p, 123, 2, 'value', [1, 3], []),
+                set([1, 3]))
+
+        h = hmac.new(self.p.digestkey, 'value', hashlib.sha1).digest()
+
+        self.assertEqual(eventlog, [
+            GET_CURSOR,
+            EXECUTE("""
+select base_id, flags
+from alias_lookup
+where
+    time_removed is null
+    and hash=%s
+    and ctx=%s
+""", (h, 2)),
+            ROWCOUNT,
+            FETCH_ONE,
+            COMMIT,
+            TPC_BEGIN,
+            GET_CURSOR,
+            EXECUTE("""
+update alias_lookup
+set flags=flags | %s
+where time_removed is null and ctx=%s and hash=%s
+returning flags
+""", (5, 2, h)),
+            FETCH_ALL,
+            TPC_PREPARE,
+            RESET,
+            GET_CURSOR,
+            EXECUTE("""
+update alias
+set flags=flags | %s
+where time_removed is null and ctx=%s and value=%s and base_id=%s
+returning flags
+""", (5, 2, 'value', 123)),
+            FETCH_ALL,
+            COMMIT,
+            TPC_COMMIT])
+
+    def test_set_flags_clear(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+
+        add_fetch_result([(123, 5)])
+        add_fetch_result([(4,)])
+        add_fetch_result([(4,)])
+
+        self.assertEqual(
+                datahog.alias.set_flags(self.p, 123, 2, 'value', [], [1, 2]),
+                set([3]))
+
+        h = hmac.new(self.p.digestkey, 'value', hashlib.sha1).digest()
+
+        self.assertEqual(eventlog, [
+            GET_CURSOR,
+            EXECUTE("""
+select base_id, flags
+from alias_lookup
+where
+    time_removed is null
+    and hash=%s
+    and ctx=%s
+""", (h, 2)),
+            ROWCOUNT,
+            FETCH_ONE,
+            COMMIT,
+            TPC_BEGIN,
+            GET_CURSOR,
+            EXECUTE("""
+update alias_lookup
+set flags=flags & ~%s
+where time_removed is null and ctx=%s and hash=%s
+returning flags
+""", (3, 2, h)),
+            FETCH_ALL,
+            TPC_PREPARE,
+            RESET,
+            GET_CURSOR,
+            EXECUTE("""
+update alias
+set flags=flags & ~%s
+where time_removed is null and ctx=%s and value=%s and base_id=%s
+returning flags
+""", (3, 2, 'value', 123)),
+            FETCH_ALL,
+            COMMIT,
+            TPC_COMMIT])
+
+    def test_set_flags_both(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+
+        add_fetch_result([(123, 5)])
+        add_fetch_result([(5,)])
+        add_fetch_result([(5,)])
+
+        self.assertEqual(
+                datahog.alias.set_flags(self.p, 123, 2, 'value', [1, 3], [2]),
+                set([1, 3]))
+
+        h = hmac.new(self.p.digestkey, 'value', hashlib.sha1).digest()
+
+        self.assertEqual(eventlog, [
+            GET_CURSOR,
+            EXECUTE("""
+select base_id, flags
+from alias_lookup
+where
+    time_removed is null
+    and hash=%s
+    and ctx=%s
+""", (h, 2)),
+            ROWCOUNT,
+            FETCH_ONE,
+            COMMIT,
+            TPC_BEGIN,
+            GET_CURSOR,
+            EXECUTE("""
+update alias_lookup
+set flags=(flags & ~%s) | %s
+where time_removed is null and ctx=%s and hash=%s
+returning flags
+""", (2, 5, 2, h)),
+            FETCH_ALL,
+            TPC_PREPARE,
+            RESET,
+            GET_CURSOR,
+            EXECUTE("""
+update alias
+set flags=(flags & ~%s) | %s
+where time_removed is null and ctx=%s and value=%s and base_id=%s
+returning flags
+""", (2, 5, 2, 'value', 123)),
+            FETCH_ALL,
+            COMMIT,
+            TPC_COMMIT])
+
+    def test_set_flags_no_alias(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+
+        add_fetch_result([(123, 5)])
+        add_fetch_result([])
+
+        self.assertEqual(
+                datahog.alias.set_flags(self.p, 123, 2, 'value', [], [1, 2]),
+                None)
+            
     def test_shift(self):
         add_fetch_result([(True,)])
 

@@ -412,22 +412,7 @@ def add_flags(pool, node_id, ctx, flags, timeout=None):
         if ``flags`` contains something that is not a registered flag
         associated with ``ctx``
     '''
-    if pool.readonly:
-        raise error.ReadOnly()
-
-    if util.ctx_tbl(ctx) != table.NODE:
-        raise error.BadContext(ctx)
-
-    flags = util.flags_to_int(ctx, flags)
-
-    with pool.get_by_guid(node_id, timeout=timeout) as conn:
-        result = query.add_flags(conn.cursor(), 'node', flags,
-                {'guid': node_id, 'ctx': ctx})
-
-    if not result:
-        return None
-
-    return util.int_to_flags(ctx, result[0])
+    return set_flags(pool, node_id, ctx, flags, [], timeout)
 
 
 def clear_flags(pool, node_id, ctx, flags, timeout=None):
@@ -461,16 +446,50 @@ def clear_flags(pool, node_id, ctx, flags, timeout=None):
         if ``flags`` contains something that is not a registered flag
         associated with ``ctx``
     '''
+    return set_flags(pool, node_id, ctx, [], flags, timeout)
+
+
+def set_flags(pool, node_id, ctx, add, clear, timeout=None):
+    '''set and clear flags on a node
+
+    :param ConnectionPool pool:
+        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
+        getting a database connection
+
+    :param int node_id: the guid of the node
+
+    :param int ctx: the node's context
+
+    :param iterable add: the flags to add
+
+    :param iterable clear: the flags to clear
+
+    :param timeout:
+        maximum time in seconds that the method is allowed to take; the default
+        of ``None`` means no limit
+
+    :returns:
+        the new set of flags, or None if there is no node for the given
+        ``guid/ctx``
+
+    :raises BadContext:
+        if the ``ctx`` is not a registered context associated with table.ENTITY
+
+    :raises BadFlag:
+        if ``flags`` contains something that is not a registered flag
+        associated with ``ctx``
+    '''
     if pool.readonly:
-        raise error.ReadOnly()
+        return error.ReadOnly()
 
     if util.ctx_tbl(ctx) != table.NODE:
         raise error.BadContext(ctx)
 
-    flags = util.flags_to_int(ctx, flags)
+    add = util.flags_to_int(ctx, add)
+    clear = util.flags_to_int(ctx, clear)
 
     with pool.get_by_guid(node_id, timeout=timeout) as conn:
-        result = query.clear_flags(conn.cursor(), 'node', flags,
+        result = query.set_flags(conn.cursor(), 'node', add, clear,
                 {'guid': node_id, 'ctx': ctx})
 
     if not result:

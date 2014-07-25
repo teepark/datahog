@@ -752,6 +752,252 @@ returning flags
                 datahog.name.clear_flags(self.p, 123, 3, 'value', [2, 3]),
                 None)
 
+    def test_set_flags_add(self):
+        datahog.set_flag(1, 3)
+        datahog.set_flag(2, 3)
+        datahog.set_flag(3, 3)
+
+        add_fetch_result([(123, 0)])
+        add_fetch_result([(5,)])
+        add_fetch_result([(5,)])
+
+        self.assertEqual(
+                datahog.name.set_flags(self.p, 123, 3, 'value', [1, 3], []),
+                set([1, 3]))
+
+        self.assertEqual(eventlog, [
+            GET_CURSOR,
+            EXECUTE("""
+select base_id, flags
+from prefix_lookup
+where
+    time_removed is null
+    and ctx=%s
+    and value=%s
+    and base_id=%s
+""", (3, 'value', 123)),
+            FETCH_ALL,
+            COMMIT,
+            TPC_BEGIN,
+            GET_CURSOR,
+            EXECUTE("""
+update name
+set flags=flags | %s
+where
+    time_removed is null
+    and ctx=%s
+    and value=%s
+    and base_id=%s
+returning flags
+""", (5, 3, 'value', 123)),
+            FETCH_ALL,
+            TPC_PREPARE,
+            RESET,
+            GET_CURSOR,
+            EXECUTE("""
+update prefix_lookup
+set flags=flags | %s
+where
+    time_removed is null
+    and ctx=%s
+    and value=%s
+    and base_id=%s
+returning flags
+""", (5, 3, 'value', 123)),
+            FETCH_ALL,
+            COMMIT,
+            TPC_COMMIT])
+
+    def test_set_flags_clear(self):
+        datahog.set_flag(1, 3)
+        datahog.set_flag(2, 3)
+        datahog.set_flag(3, 3)
+
+        add_fetch_result([(123, 0)])
+        add_fetch_result([(4,)])
+        add_fetch_result([(4,)])
+
+        self.assertEqual(
+                datahog.name.set_flags(self.p, 123, 3, 'value', [], [1, 2]),
+                set([3]))
+
+        self.assertEqual(eventlog, [
+            GET_CURSOR,
+            EXECUTE("""
+select base_id, flags
+from prefix_lookup
+where
+    time_removed is null
+    and ctx=%s
+    and value=%s
+    and base_id=%s
+""", (3, 'value', 123)),
+            FETCH_ALL,
+            COMMIT,
+            TPC_BEGIN,
+            GET_CURSOR,
+            EXECUTE("""
+update name
+set flags=flags & ~%s
+where
+    time_removed is null
+    and ctx=%s
+    and value=%s
+    and base_id=%s
+returning flags
+""", (3, 3, 'value', 123)),
+            FETCH_ALL,
+            TPC_PREPARE,
+            RESET,
+            GET_CURSOR,
+            EXECUTE("""
+update prefix_lookup
+set flags=flags & ~%s
+where
+    time_removed is null
+    and ctx=%s
+    and value=%s
+    and base_id=%s
+returning flags
+""", (3, 3, 'value', 123)),
+            FETCH_ALL,
+            COMMIT,
+            TPC_COMMIT])
+
+    def test_set_flags_both(self):
+        datahog.set_flag(1, 3)
+        datahog.set_flag(2, 3)
+        datahog.set_flag(3, 3)
+
+        add_fetch_result([(123, 0)])
+        add_fetch_result([(5,)])
+        add_fetch_result([(5,)])
+
+        self.assertEqual(
+                datahog.name.set_flags(self.p, 123, 3, 'value', [1, 3], [2]),
+                set([1, 3]))
+
+        self.assertEqual(eventlog, [
+            GET_CURSOR,
+            EXECUTE("""
+select base_id, flags
+from prefix_lookup
+where
+    time_removed is null
+    and ctx=%s
+    and value=%s
+    and base_id=%s
+""", (3, 'value', 123)),
+            FETCH_ALL,
+            COMMIT,
+            TPC_BEGIN,
+            GET_CURSOR,
+            EXECUTE("""
+update name
+set flags=(flags & ~%s) | %s
+where
+    time_removed is null
+    and ctx=%s
+    and value=%s
+    and base_id=%s
+returning flags
+""", (2, 5, 3, 'value', 123)),
+            FETCH_ALL,
+            TPC_PREPARE,
+            RESET,
+            GET_CURSOR,
+            EXECUTE("""
+update prefix_lookup
+set flags=(flags & ~%s) | %s
+where
+    time_removed is null
+    and ctx=%s
+    and value=%s
+    and base_id=%s
+returning flags
+""", (2, 5, 3, 'value', 123)),
+            FETCH_ALL,
+            COMMIT,
+            TPC_COMMIT])
+
+    def test_set_flags_phonetic_both(self):
+        datahog.set_flag(1, 2)
+        datahog.set_flag(2, 2)
+        datahog.set_flag(3, 2)
+
+        add_fetch_result([(123, 0)])
+        add_fetch_result([(123, 0)])
+        add_fetch_result([(6,)])
+        add_fetch_result([(6,)])
+        add_fetch_result([(6,)])
+
+        dm, dmalt = _dm('window')
+
+        self.assertEqual(
+                datahog.name.set_flags(self.p, 123, 2, 'window', [2, 3], [1]),
+                set([2, 3]))
+
+        self.assertEqual(eventlog, [
+            GET_CURSOR,
+            EXECUTE("""
+select 1
+from phonetic_lookup
+where
+    time_removed is null
+    and ctx=%s
+    and code=%s
+    and value=%s
+    and base_id=%s
+""", (2, dm, 'window', 123)),
+            ROWCOUNT,
+            COMMIT,
+            GET_CURSOR,
+            EXECUTE("""
+select 1
+from phonetic_lookup
+where
+    time_removed is null
+    and ctx=%s
+    and code=%s
+    and value=%s
+    and base_id=%s
+""", (2, dmalt, 'window', 123)),
+            ROWCOUNT,
+            COMMIT,
+            TPC_BEGIN,
+            GET_CURSOR,
+            EXECUTE("""
+update name
+set flags=(flags & ~%s) | %s
+where time_removed is null and ctx=%s and value=%s and base_id=%s
+returning flags
+""", (1, 6, 2, 'window', 123)),
+            FETCH_ALL,
+            TPC_PREPARE,
+            RESET,
+            TPC_BEGIN,
+            GET_CURSOR,
+            EXECUTE("""
+update phonetic_lookup
+set flags=(flags & ~%s) | %s
+where time_removed is null and code=%s and ctx=%s and base_id=%s and value=%s
+returning flags
+""", (1, 6, dm, 2, 123, 'window')),
+            FETCH_ALL,
+            TPC_PREPARE,
+            RESET,
+            GET_CURSOR,
+            EXECUTE("""
+update phonetic_lookup
+set flags=(flags & ~%s) | %s
+where time_removed is null and code=%s and ctx=%s and base_id=%s and value=%s
+returning flags
+""", (1, 6, dmalt, 2, 123, 'window')),
+            FETCH_ALL,
+            COMMIT,
+            TPC_COMMIT,
+            TPC_COMMIT])
+
     def test_shift(self):
         add_fetch_result([None])
 
