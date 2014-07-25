@@ -1107,19 +1107,6 @@ returning child_id
     return [r[0] for r in cursor.fetchall()]
 
 
-def remove_node(cursor, nid, ctx):
-    cursor.execute("""
-update node
-set time_removed=now()
-where
-    time_removed is null
-    and guid=%%s
-    and ctx=%%s
-""", (nid, ctx))
-
-    return bool(cursor.rowcount)
-
-
 def remove_nodes(cursor, nodes):
     cursor.execute("""
 update node
