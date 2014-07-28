@@ -7,7 +7,8 @@ from ..const import table, util
 from ..db import query, txn
 
 
-__all__ = ['create', 'get', 'batch_get', 'add_flags', 'clear_flags', 'remove']
+__all__ = ['create', 'get', 'batch_get', 'add_flags', 'clear_flags',
+        'set_flags', 'remove']
 
 
 def create(pool, ctx, flags=None, timeout=None):

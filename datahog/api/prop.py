@@ -8,7 +8,7 @@ from ..db import query, txn
 
 
 __all__ = ['set', 'get', 'get_list', 'increment', 'add_flags', 'clear_flags',
-        'remove']
+        'set_flags', 'remove']
 
 
 _missing = object()

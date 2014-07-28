@@ -7,8 +7,8 @@ from ..const import search as searchconst, table, util
 from ..db import query, txn
 
 
-__all__ = ['create', 'search', 'list', 'add_flags', 'clear_flags', 'shift',
-        'remove']
+__all__ = ['create', 'search', 'list', 'add_flags', 'clear_flags', 'set_flags',
+        'shift', 'remove']
 
 
 def create(pool, base_id, ctx, value, flags=None, index=None, timeout=None):

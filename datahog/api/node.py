@@ -11,7 +11,7 @@ from ..db import query, txn
 
 __all__ = ['create', 'get', 'batch_get', 'child_of', 'list_children',
         'get_children', 'update', 'increment', 'add_flags', 'clear_flags',
-        'move', 'shift', 'remove']
+        'set_flags', 'move', 'shift', 'remove']
 
 
 _missing = object()

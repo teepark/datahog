@@ -11,7 +11,7 @@ from ..db import query, txn
 
 
 __all__ = ['set', 'lookup', 'list', 'batch', 'add_flags', 'clear_flags',
-        'shift', 'remove']
+        'set_flags', 'shift', 'remove']
 
 
 def set(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
