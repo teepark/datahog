@@ -364,14 +364,16 @@ def insert_alias(cursor, base_id, ctx, value, index, flags):
     if index is None:
         cursor.execute("""
 insert into alias (base_id, ctx, value, pos, flags)
-select %%s, %%s, %%s, (
-    select count(*)
+select %%s, %%s, %%s, coalesce((
+    select pos + 1
     from alias
     where
         time_removed is null
         and base_id=%%s
         and ctx=%%s
-), %%s
+    order by pos desc
+    limit 1
+), 1), %%s
 where exists (
     select 1 from %s
     where
@@ -435,12 +437,14 @@ with oldpos as (
         and ctx=%s
         and pos between symmetric (select pos from oldpos) and %s
 ), maxpos(n) as (
-    select count(*) - 1
+    select pos
     from alias
     where
         time_removed is null
         and base_id=%s
         and ctx=%s
+    order by pos desc
+    limit 1
 ), move as (
     update alias
     set pos=(case
@@ -449,6 +453,7 @@ with oldpos as (
         else %s
         end)
     where
+        exists (select 1 from oldpos)
         time_removed is null
         and base_id=%s
         and ctx=%s
@@ -853,14 +858,16 @@ def insert_edge(cursor, base_id, ctx, child_id, pos=None, base_ctx=None):
     if pos is None:
         cursor.execute('''
 insert into edge (base_id, ctx, child_id, pos)
-select %%s, %%s, %%s, (
-    select count(*)
+select %%s, %%s, %%s, coalesce((
+    select pos + 1
     from edge
     where
         time_removed is null
         and base_id=%%s
         and ctx=%%s
-)
+    order by pos desc
+    limit 1
+), 1)
 where %s
 ''' % (where,), (base_id, ctx, child_id, base_id, ctx) + where_params)
     else:
@@ -1049,9 +1056,22 @@ with oldpos as (
         and base_id=%s
         and ctx=%s
         and pos between symmetric (select pos from oldpos) and %s
+), maxpos(n) as (
+    select pos
+    from edge
+    where
+        time_removed is null
+        and base_id=%s
+        and ctx=%s
+    order by pos desc
+    limit 1
 ), move as (
     update edge
-    set pos=%s
+    set pos=(case
+        when %s > (select n from maxpos)
+        then (select n from maxpos)
+        else %s
+        end)
     where
         time_removed is null
         and base_id=%s
@@ -1062,7 +1082,8 @@ with oldpos as (
 select exists (select 1 from move)
 """, (base_id, ctx, child_id,
     base_id, ctx, pos,
-    pos, base_id, ctx, child_id))
+    base_id, ctx,
+    pos, pos, base_id, ctx, child_id))
 
     return cursor.fetchone()[0]
 
@@ -1128,12 +1149,14 @@ def insert_name(cursor, base_id, ctx, value, flags, index):
         cursor.execute("""
 insert into name (base_id, ctx, value, flags, pos)
 select %%s, %%s, %%s, %%s, (
-    select count(*)
+    select pos + 1
     from name
     where
         time_removed is null
         and base_id=%%s
         and ctx=%%s
+    order by pos desc
+    limit 1
 )
 where exists (
     select 1 from %s
@@ -1324,12 +1347,14 @@ with oldpos as (
         and ctx=%s
         and pos between symmetric (select pos from oldpos) and %s
 ), maxpos(n) as (
-    select count(*) - 1
+    select pos
     from name
     where
         time_removed is null
         and base_id=%s
         and ctx=%s
+    order by pos desc
+    limit 1
 ), move as (
     update name
     set pos=(case

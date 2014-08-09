@@ -47,14 +47,16 @@ class NameTests(base.TestCase):
             GET_CURSOR,
             EXECUTE("""
 insert into name (base_id, ctx, value, flags, pos)
-select %s, %s, %s, %s, (
-    select count(*)
+select %s, %s, %s, %s, coalesce((
+    select pos + 1
     from name
     where
         time_removed is null
         and base_id=%s
         and ctx=%s
-)
+    order by pos desc
+    limit 1
+), 1)
 where exists (
     select 1 from entity
     where
@@ -91,14 +93,16 @@ values (%s, %s, %s, %s, %s)
             GET_CURSOR,
             EXECUTE("""
 insert into name (base_id, ctx, value, flags, pos)
-select %s, %s, %s, %s, (
-    select count(*)
+select %s, %s, %s, %s, coalesce((
+    select pos + 1
     from name
     where
         time_removed is null
         and base_id=%s
         and ctx=%s
-)
+    order by pos desc
+    limit 1
+), 1)
 where exists (
     select 1 from entity
     where
@@ -139,14 +143,16 @@ values (%s, %s, %s, %s, %s)
             GET_CURSOR,
             EXECUTE("""
 insert into name (base_id, ctx, value, flags, pos)
-select %s, %s, %s, %s, (
-    select count(*)
+select %s, %s, %s, %s, coalesce((
+    select pos + 1
     from name
     where
         time_removed is null
         and base_id=%s
         and ctx=%s
-)
+    order by pos desc
+    limit 1
+), 1)
 where exists (
     select 1 from entity
     where
@@ -178,14 +184,16 @@ values (%s, %s, %s, %s)
             GET_CURSOR,
             EXECUTE("""
 insert into name (base_id, ctx, value, flags, pos)
-select %s, %s, %s, %s, (
-    select count(*)
+select %s, %s, %s, %s, coalesce((
+    select pos + 1
     from name
     where
         time_removed is null
         and base_id=%s
         and ctx=%s
-)
+    order by pos desc
+    limit 1
+), 1)
 where exists (
     select 1 from entity
     where
@@ -1030,12 +1038,14 @@ with oldpos as (
         and ctx=%s
         and pos between symmetric (select pos from oldpos) and %s
 ), maxpos(n) as (
-    select count(*) - 1
+    select pos
     from name
     where
         time_removed is null
         and base_id=%s
         and ctx=%s
+    order by pos desc
+    limit 1
 ), move as (
     update name
     set pos=(case
@@ -1087,12 +1097,14 @@ with oldpos as (
         and ctx=%s
         and pos between symmetric (select pos from oldpos) and %s
 ), maxpos(n) as (
-    select count(*) - 1
+    select pos
     from name
     where
         time_removed is null
         and base_id=%s
         and ctx=%s
+    order by pos desc
+    limit 1
 ), move as (
     update name
     set pos=(case

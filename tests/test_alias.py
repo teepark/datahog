@@ -58,14 +58,16 @@ from selectquery
             GET_CURSOR,
             EXECUTE("""
 insert into alias (base_id, ctx, value, pos, flags)
-select %s, %s, %s, (
-    select count(*)
+select %s, %s, %s, coalesce((
+    select pos + 1
     from alias
     where
         time_removed is null
         and base_id=%s
         and ctx=%s
-), %s
+    order by pos desc
+    limit 1
+), 1), %s
 where exists (
     select 1 from entity
     where
@@ -645,12 +647,14 @@ with oldpos as (
         and ctx=%s
         and pos between symmetric (select pos from oldpos) and %s
 ), maxpos(n) as (
-    select count(*) - 1
+    select pos
     from alias
     where
         time_removed is null
         and base_id=%s
         and ctx=%s
+    order by pos desc
+    limit 1
 ), move as (
     update alias
     set pos=(case
@@ -659,7 +663,8 @@ with oldpos as (
         else %s
         end)
     where
-        time_removed is null
+        exists (select 1 from oldpos)
+        and time_removed is null
         and base_id=%s
         and ctx=%s
         and value=%s

@@ -50,14 +50,16 @@ returning guid
             FETCH_ONE,
             EXECUTE("""
 insert into edge (base_id, ctx, child_id, pos)
-select %s, %s, %s, (
-    select count(*)
+select %s, %s, %s, coalesce((
+    select pos + 1
     from edge
     where
         time_removed is null
         and base_id=%s
         and ctx=%s
-)
+    order by pos desc
+    limit 1
+), 1)
 where true
 """, (123, 2, 1234, 123, 2)),
             ROWCOUNT,
@@ -611,9 +613,22 @@ with oldpos as (
         and base_id=%s
         and ctx=%s
         and pos between symmetric (select pos from oldpos) and %s
+), maxpos(n) as (
+    select pos
+    from edge
+    where
+        time_removed is null
+        and base_id=%s
+        and ctx=%s
+    order by pos desc
+    limit 1
 ), move as (
     update edge
-    set pos=%s
+    set pos=(case
+        when %s > (select n from maxpos)
+        then (select n from maxpos)
+        else %s
+        end)
     where
         time_removed is null
         and base_id=%s
@@ -622,7 +637,7 @@ with oldpos as (
     returning 1
 )
 select exists (select 1 from move)
-""", (123, 2, 1234, 123, 2, 0, 0, 123, 2, 1234)),
+""", (123, 2, 1234, 123, 2, 0, 123, 2, 0, 0, 123, 2, 1234)),
             FETCH_ONE,
             COMMIT])
 
@@ -657,9 +672,22 @@ with oldpos as (
         and base_id=%s
         and ctx=%s
         and pos between symmetric (select pos from oldpos) and %s
+), maxpos(n) as (
+    select pos
+    from edge
+    where
+        time_removed is null
+        and base_id=%s
+        and ctx=%s
+    order by pos desc
+    limit 1
 ), move as (
     update edge
-    set pos=%s
+    set pos=(case
+        when %s > (select n from maxpos)
+        then (select n from maxpos)
+        else %s
+        end)
     where
         time_removed is null
         and base_id=%s
@@ -668,7 +696,7 @@ with oldpos as (
     returning 1
 )
 select exists (select 1 from move)
-""", (123, 2, 1234, 123, 2, 0, 0, 123, 2, 1234)),
+""", (123, 2, 1234, 123, 2, 0, 123, 2, 0, 0, 123, 2, 1234)),
             FETCH_ONE,
             COMMIT])
 
@@ -708,14 +736,16 @@ select 1 from removal
             ROWCOUNT,
             EXECUTE("""
 insert into edge (base_id, ctx, child_id, pos)
-select %s, %s, %s, (
-    select count(*)
+select %s, %s, %s, coalesce((
+    select pos + 1
     from edge
     where
         time_removed is null
         and base_id=%s
         and ctx=%s
-)
+    order by pos desc
+    limit 1
+), 1)
 where exists(
     select 1 from entity
     where
