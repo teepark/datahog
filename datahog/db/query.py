@@ -454,7 +454,7 @@ with oldpos as (
         end)
     where
         exists (select 1 from oldpos)
-        time_removed is null
+        and time_removed is null
         and base_id=%s
         and ctx=%s
         and value=%s
@@ -1148,7 +1148,7 @@ def insert_name(cursor, base_id, ctx, value, flags, index):
     if index is None:
         cursor.execute("""
 insert into name (base_id, ctx, value, flags, pos)
-select %%s, %%s, %%s, %%s, (
+select %%s, %%s, %%s, %%s, coalesce((
     select pos + 1
     from name
     where
@@ -1157,7 +1157,7 @@ select %%s, %%s, %%s, %%s, (
         and ctx=%%s
     order by pos desc
     limit 1
-)
+), 1)
 where exists (
     select 1 from %s
     where
