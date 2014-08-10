@@ -8,7 +8,7 @@ META = {}
 
 
 def set_flag(value, ctx):
-    ''' create a constant for use in flags
+    '''create a constant for use in flags
 
     :param int value:
         the "bit position" of this flag. must be between 1 and 16 inclusive.
