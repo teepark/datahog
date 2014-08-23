@@ -147,10 +147,11 @@ def storage_wrap(ctx, value):
             except schema.InvalidMessage:
                 raise error.StorageClassError(
                         "SERIAL schema validation failed", msg.message)
-        try:
-            value = mummy.dumps(value)
-        except TypeError:
-            raise error.StorageClassError(
+        else:
+            try:
+                value = mummy.dumps(value)
+            except TypeError:
+                raise error.StorageClassError(
                     "SERIAL requires a serializable value")
         return psycopg2.Binary(value)
 
