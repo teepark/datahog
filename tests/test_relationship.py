@@ -17,7 +17,7 @@ from pgmock import *
 class RelationshipTests(base.TestCase):
     def setUp(self):
         super(RelationshipTests, self).setUp()
-        datahog.set_context(1, datahog.ENTITY)
+        datahog.set_context(1, datahog.NODE)
         datahog.set_context(2, datahog.NODE,
                 {'base_ctx': 1, 'storage': datahog.storage.INT})
         datahog.set_context(3, datahog.RELATIONSHIP, {
@@ -47,10 +47,10 @@ select %s, %s, %s, %s, (
 ), %s
 where exists (
     select 1
-    from entity
+    from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
 returning 1
@@ -75,7 +75,7 @@ where exists (
     from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
 returning 1
@@ -106,10 +106,10 @@ select %s, %s, %s, %s, (
 ), %s
 where exists (
     select 1
-    from entity
+    from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
 returning 1
@@ -140,10 +140,10 @@ select %s, %s, %s, %s, (
 ), %s
 where exists (
     select 1
-    from entity
+    from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
 returning 1
@@ -168,7 +168,7 @@ where exists (
     from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
 returning 1
@@ -200,10 +200,10 @@ select %s, %s, %s, %s, (
 ), %s
 where exists (
     select 1
-    from entity
+    from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
 returning 1
@@ -224,10 +224,10 @@ returning 1
             EXECUTE("""
 with eligible as (
     select 1
-    from entity
+    from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 ), bump as (
     update relationship
@@ -255,7 +255,7 @@ with eligible as (
     from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 ), bump as (
     update relationship

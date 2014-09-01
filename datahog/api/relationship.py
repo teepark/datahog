@@ -7,13 +7,12 @@ from ..const import table, util
 from ..db import query, txn
 
 
-__all__ = ['create', 'list', 'get', 'add_flags', 'clear_flags', 'set_flags',
-        'shift', 'remove']
+__all__ = ['create', 'list', 'get', 'set_flags', 'shift', 'remove']
 
 
 def create(pool, ctx, base_id, rel_id, forward_index=None, reverse_index=None,
         flags=None, timeout=None):
-    '''make a new relationship between two guid objects
+    '''make a new relationship between two id objects
 
     :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
@@ -21,9 +20,9 @@ def create(pool, ctx, base_id, rel_id, forward_index=None, reverse_index=None,
 
     :param int ctx: the context for the relationship
 
-    :param int base_id: the guid of the first related object
+    :param int base_id: the id of the first related object
 
-    :param int rel_id: the guid of the other related object
+    :param int rel_id: the id of the other related object
 
     :param int forward_index:
         insert the new forward relationship into position ``index`` for the
@@ -75,20 +74,20 @@ def create(pool, ctx, base_id, rel_id, forward_index=None, reverse_index=None,
             forward_index, reverse_index, flags, timeout)
 
 
-def list(pool, guid, ctx, forward=True, limit=100, start=0, timeout=None):
-    '''list the relationships associated with a guid object
+def list(pool, id, ctx, forward=True, limit=100, start=0, timeout=None):
+    '''list the relationships associated with a id object
 
     :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int guid: guid of the parent object
+    :param int id: id of the parent object
 
     :param int ctx: context of the relationships to fetch
 
     :param bool forward:
-        if ``True``, then fetches relationships which have ``guid`` as their
-        ``base_id``, otherwise ``guid`` refers to ``rel_id``
+        if ``True``, then fetches relationships which have ``id`` as their
+        ``base_id``, otherwise ``id`` refers to ``rel_id``
 
     :param int limit: maximum number of relationships to return
 
@@ -106,8 +105,8 @@ def list(pool, guid, ctx, forward=True, limit=100, start=0, timeout=None):
         that can be used as ``start`` in a subsequent call to page forward from
         after the end of this result list.
     '''
-    with pool.get_by_guid(guid, timeout=timeout) as conn:
-        results = query.select_relationships(conn.cursor(), guid, ctx, forward, limit, start)
+    with pool.get_by_id(id, timeout=timeout) as conn:
+        results = query.select_relationships(conn.cursor(), id, ctx, forward, limit, start)
 
     pos = 0
     for result in results:
@@ -118,7 +117,7 @@ def list(pool, guid, ctx, forward=True, limit=100, start=0, timeout=None):
 
 
 def get(pool, ctx, base_id, rel_id, timeout=None):
-    '''fetch the relationship between two guids
+    '''fetch the relationship between two ids
 
     :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
@@ -126,9 +125,9 @@ def get(pool, ctx, base_id, rel_id, timeout=None):
 
     :param int ctx: context of the relationship
 
-    :param int base_id: guid of the object at one end
+    :param int base_id: id of the object at one end
 
-    :param int rel_id: guid of the object at the other end
+    :param int rel_id: id of the object at the other end
 
     :param timeout:
         maximum time in seconds that the method is allowed to take; the default
@@ -138,7 +137,7 @@ def get(pool, ctx, base_id, rel_id, timeout=None):
         a relationship dict (with ``ctx``, ``base_id``, ``rel_id``, and
         ``flags`` keys) or None if there is no such relationship
     '''
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+    with pool.get_by_id(base_id, timeout=timeout) as conn:
         rels = query.select_relationships(
                 conn.cursor(), base_id, ctx, True, 1, 0, rel_id)
 
@@ -150,76 +149,6 @@ def get(pool, ctx, base_id, rel_id, timeout=None):
     return rel
 
 
-def add_flags(pool, base_id, rel_id, ctx, flags, timeout=None):
-    '''apply flags to an existing relationship
-
-    :param ConnectionPool pool:
-        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
-        getting a database connection
-
-    :param int base_id: the guid of the object at one end
-
-    :param int rel_id: the guid of the object at the other end
-
-    :param int ctx: the relationship's context
-
-    :param iterable flags: the flags to add
-
-    :param timeout:
-        maximum time in seconds that the method is allowed to take; the default
-        of ``None`` means no limit
-
-    :returns:
-        the new set of flags, or None if there is no relationship for the given
-        ``base_id/rel_id/ctx``
-
-    :raises ReadOnly: if given a read-only pool
-
-    :raises BadContext:
-        if the ``ctx`` is not a registered context for table.RELATIONSHIP
-
-    :raises BadFlag:
-        if ``flags`` contains something that is not a registered flag
-        associated with ``ctx``
-    '''
-    return set_flags(pool, base_id, rel_id, ctx, flags, [], timeout)
-
-
-def clear_flags(pool, base_id, rel_id, ctx, flags, timeout=None):
-    '''remove flags from a relationship
-
-    :param ConnectionPool pool:
-        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
-        getting a database connection
-
-    :param int base_id: the guid of the object at one end
-
-    :param int rel_id: the guid of the object at the other end
-
-    :param int ctx: the relationship's context
-
-    :param iterable flags: the flags to clear
-
-    :param timeout:
-        maximum time in seconds that the method is allowed to take; the default
-        of ``None`` means no limit
-
-    :returns:
-        the new set of flags, or None if there is no relationship for the given
-        ``base_id/rel_id/ctx``
-
-    :raises ReadOnly: if given a read-only pool
-
-    :raises BadContext:
-        if the ``ctx`` is not a registered context for table.RELATIONSHIP
-
-    :raises BadFlag:
-        if ``flags`` contains something that is not a registered flag
-        associated with ``ctx``
-    '''
-    return set_flags(pool, base_id, rel_id, ctx, [], flags, timeout)
-
-
 def set_flags(pool, base_id, rel_id, ctx, add, clear, timeout=None):
     '''remove flags from a relationship
 
@@ -227,9 +156,9 @@ def set_flags(pool, base_id, rel_id, ctx, add, clear, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the object at one end
+    :param int base_id: the id of the object at one end
 
-    :param int rel_id: the guid of the object at the other end
+    :param int rel_id: the id of the object at the other end
 
     :param int ctx: the relationship's context
 
@@ -279,9 +208,9 @@ def shift(pool, base_id, rel_id, ctx, forward, index, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the base_id parent
+    :param int base_id: the id of the base_id parent
 
-    :param int rel_id: the guid of the rel_id parent
+    :param int rel_id: the id of the rel_id parent
 
     :param int ctx: the relationship's context
 
@@ -307,9 +236,9 @@ def shift(pool, base_id, rel_id, ctx, forward, index, timeout=None):
     if pool.readonly:
         raise error.ReadOnly()
 
-    anchor_guid = base_id if forward else rel_id
+    anchor_id = base_id if forward else rel_id
 
-    with pool.get_by_guid(anchor_guid, timeout=timeout) as conn:
+    with pool.get_by_id(anchor_id, timeout=timeout) as conn:
         return query.reorder_relationship(
                 conn.cursor(), base_id, rel_id, ctx, forward, index)
 
@@ -321,9 +250,9 @@ def remove(pool, base_id, rel_id, ctx, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the object at one end
+    :param int base_id: the id of the object at one end
 
-    :param int rel_id: the guid of the object at the other end
+    :param int rel_id: the id of the object at the other end
 
     :param int ctx: the relationshp's context
 

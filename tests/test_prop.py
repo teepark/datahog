@@ -19,7 +19,7 @@ from pgmock import *
 class PropertyTests(base.TestCase):
     def setUp(self):
         super(PropertyTests, self).setUp()
-        datahog.set_context(1, datahog.ENTITY)
+        datahog.set_context(1, datahog.NODE)
         datahog.set_context(2, datahog.PROPERTY,
                 {'base_ctx': 1, 'storage': datahog.storage.INT})
 
@@ -35,10 +35,10 @@ class PropertyTests(base.TestCase):
             EXECUTE("""
 with existencequery as (
     select 1
-    from entity
+    from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 ),
 updatequery as (
@@ -78,10 +78,10 @@ select
             EXECUTE("""
 with existencequery as (
     select 1
-    from entity
+    from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 ),
 updatequery as (
@@ -120,10 +120,10 @@ select
             EXECUTE("""
 with existencequery as (
     select 1
-    from entity
+    from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 ),
 updatequery as (
@@ -167,10 +167,10 @@ select
             EXECUTE_FAILURE("""
 with existencequery as (
     select 1
-    from entity
+    from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 ),
 updatequery as (

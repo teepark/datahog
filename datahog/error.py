@@ -18,5 +18,11 @@ class ReadOnly(Exception):
 class BadContext(Exception):
     pass
 
+class MissingParent(Exception):
+    pass
+
+class IsRoot(Exception):
+    pass
+
 class StorageClassError(TypeError):
     pass

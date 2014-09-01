@@ -7,8 +7,7 @@ from ..const import table, util
 from ..db import query, txn
 
 
-__all__ = ['create', 'get', 'batch_get', 'add_flags', 'clear_flags',
-        'set_flags', 'remove']
+__all__ = ['create', 'get', 'batch_get', 'set_flags', 'remove']
 
 
 def create(pool, ctx, flags=None, timeout=None):
@@ -28,7 +27,7 @@ def create(pool, ctx, flags=None, timeout=None):
         ``None`` means no limit
 
     :returns:
-        an entity dict, which contains ``guid``, ``ctx`` and ``flags`` keys
+        an entity dict, which contains ``id``, ``ctx`` and ``flags`` keys
 
     :raises ReadOnly: if given a read-only pool
 
@@ -50,20 +49,20 @@ def create(pool, ctx, flags=None, timeout=None):
 
     with pool.get_for_entity_write(timeout=timeout) as conn:
         return {
-            'guid': query.insert_entity(conn.cursor(), ctx, flagint),
+            'id': query.insert_entity(conn.cursor(), ctx, flagint),
             'ctx': ctx,
             'flags': flags,
         }
 
 
-def get(pool, guid, ctx, timeout=None):
+def get(pool, id, ctx, timeout=None):
     '''retrieve a stored entity
 
     :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int guid: the guid of the entity to pull
+    :param int id: the id of the entity to pull
 
     :param int ctx: the context of the entity
 
@@ -72,11 +71,11 @@ def get(pool, guid, ctx, timeout=None):
         of ``None`` means no limit
 
     :returns:
-        an entity dict (which contains ``guid``, ``ctx`` and ``flags`` keys) or
-        ``None`` if there exists no entity for the given ``guid/ctx``
+        an entity dict (which contains ``id``, ``ctx`` and ``flags`` keys) or
+        ``None`` if there exists no entity for the given ``id/ctx``
     '''
-    with pool.get_by_guid(guid, timeout=timeout) as conn:
-        ent = query.select_entity(conn.cursor(), guid, ctx)
+    with pool.get_by_id(id, timeout=timeout) as conn:
+        ent = query.select_entity(conn.cursor(), id, ctx)
 
     if ent is not None:
         ent['flags'] = util.int_to_flags(ctx, ent['flags'])
@@ -92,22 +91,22 @@ def batch_get(pool, eid_ctx_pairs, timeout=None):
         getting a database connection
 
     :param list eid_ctx_pairs:
-        list of ``(guid, ctx)`` tuples describing the entities to fetch
+        list of ``(id, ctx)`` tuples describing the entities to fetch
 
     :param timeout:
         maximum time in seconds that the method is allowed to take: the default
         of ``None`` means no limit
 
     :returns:
-        a list of entity dicts containing ``guid``, ``ctx`` and ``flags`` keys.
-        for any ``(guid, ctx)`` pairs from ``eid_ctx_pairs`` for which no
+        a list of entity dicts containing ``id``, ``ctx`` and ``flags`` keys.
+        for any ``(id, ctx)`` pairs from ``eid_ctx_pairs`` for which no
         entity could be found, a ``None`` will be in that position in the
         results list.
     '''
     order = {eid: i for i, (eid, ctx) in enumerate(eid_ctx_pairs)}
     groups = {}
     for eid, ctx in eid_ctx_pairs:
-        groups.setdefault(pool.shard_by_guid(eid), []).append((eid, ctx))
+        groups.setdefault(pool.shard_by_id(eid), []).append((eid, ctx))
 
     if timeout is not None:
         deadline = time.time() + timeout
@@ -123,83 +122,19 @@ def batch_get(pool, eid_ctx_pairs, timeout=None):
     results = [None] * len(eid_ctx_pairs)
     for ent in ents:
         ent['flags'] = util.int_to_flags(ent['ctx'], ent['flags'])
-        results[order[ent['guid']]] = ent
+        results[order[ent['id']]] = ent
 
     return results
 
 
-def add_flags(pool, guid, ctx, flags, timeout=None):
-    '''apply flags to a stored entity
-
-    :param ConnectionPool pool:
-        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
-        getting a database connection
-
-    :param int guid: the guid of the entity
-
-    :param int ctx: the entity's context
-
-    :param iterable flags: the flags to add
-
-    :param timeout:
-        maximum time in seconds that the method is allowed to take; the default
-        of ``None`` means no limit
-
-    :returns:
-        the new set of flags, or None if there is no entity for the
-        given ``guid/ctx``
-
-    :raises ReadOnly: if given a readonly ConnectionPool
-
-    :raises BadContext:
-        if the ``ctx`` is not a registered context associated with table.ENTITY
-
-    :raises BadFlag:
-        if ``flags`` contains something that is not a registered flag
-        associated with ``ctx``
-    '''
-    return set_flags(pool, guid, ctx, flags, [], timeout)
-
-
-def clear_flags(pool, guid, ctx, flags, timeout=None):
-    '''remove flags from a stored entity
-
-    :param ConnectionPool pool:
-        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
-        getting a database connection
-
-    :param int guid: the guid of the entity
-
-    :param int ctx: the entity's context
-
-    :param iterable flags: the flags to clear
-
-    :param timeout:
-        maximum time in seconds that the method is allowed to take; the default
-        of ``None`` means no limit
-
-    :returns:
-        the new set of flags, or None if there is no entity for the
-        given ``guid/ctx``
-
-    :raises BadContext:
-        if the ``ctx`` is not a registered context associated with table.ENTITY
-
-    :raises BadFlag:
-        if ``flags`` contains something that is not a registered flag
-        associated with ``ctx``
-    '''
-    return set_flags(pool, guid, ctx, [], flags, timeout)
-
-
-def set_flags(pool, guid, ctx, add, clear, timeout=None):
+def set_flags(pool, id, ctx, add, clear, timeout=None):
     '''set and clear flags on an entity
 
     :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int guid: the guid of the entity
+    :param int id: the id of the entity
 
     :param int ctx: the entity's context
 
@@ -213,7 +148,7 @@ def set_flags(pool, guid, ctx, add, clear, timeout=None):
 
     :returns:
         the new set of flags, or None if there is no entity for the
-        given ``guid/ctx``
+        given ``id/ctx``
 
     :raises BadContext:
         if the ``ctx`` is not a registered context associated with table.ENTITY
@@ -231,10 +166,10 @@ def set_flags(pool, guid, ctx, add, clear, timeout=None):
     add = util.flags_to_int(ctx, add)
     clear = util.flags_to_int(ctx, clear)
 
-    with pool.get_by_guid(guid, timeout=timeout) as conn:
+    with pool.get_by_id(id, timeout=timeout) as conn:
         result = query.set_flags(
                 conn.cursor(), 'entity', add, clear,
-                {'guid': guid, 'ctx': ctx})
+                {'id': id, 'ctx': ctx})
 
     if not result:
         return None
@@ -242,14 +177,14 @@ def set_flags(pool, guid, ctx, add, clear, timeout=None):
     return util.int_to_flags(ctx, result[0])
 
 
-def remove(pool, guid, ctx, timeout=None):
+def remove(pool, id, ctx, timeout=None):
     '''remove a stored entity, and all associated objects
 
     :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int guid: the guid of the entity
+    :param int id: the id of the entity
 
     :param int ctx: the entity's ctx
 
@@ -259,7 +194,7 @@ def remove(pool, guid, ctx, timeout=None):
 
     :returns:
         boolean, whether an entity was removed. this would be ``False`` if
-        there is no entity for the given ``guid/ctx``
+        there is no entity for the given ``id/ctx``
 
     :raises ReadOnly: if given a read-only pool
     '''
@@ -269,4 +204,4 @@ def remove(pool, guid, ctx, timeout=None):
     if util.ctx_tbl(ctx) != table.ENTITY:
         return False
 
-    return txn.remove_entity(pool, guid, ctx, timeout)
+    return txn.remove_entity(pool, id, ctx, timeout)

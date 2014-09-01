@@ -26,7 +26,8 @@ def set_context(value, tbl, meta=None):
 
             base_ctx
                 the context value of the object to which it is related through
-                its ``base_id``. applies when ``tbl`` is ``table.NODE``,
+                its ``base_id``. applies optionally when ``tbl`` is
+                ``table.NODE`` and is required when ``tbl`` is
                 ``table.PROPERTY``, ``table.ALIAS``, ``table.RELATIONSHIP``,
                 or ``table.NAME``.
 

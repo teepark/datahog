@@ -26,7 +26,7 @@ def _dm(full):
 class NameTests(base.TestCase):
     def setUp(self):
         super(NameTests, self).setUp()
-        datahog.set_context(1, datahog.ENTITY)
+        datahog.set_context(1, datahog.NODE)
         datahog.set_context(2, datahog.NAME,
                 {'base_ctx': 1, 'search': datahog.search.PHONETIC,
                     'phonetic_loose': True})
@@ -58,10 +58,10 @@ select %s, %s, %s, %s, coalesce((
     limit 1
 ), 1)
 where exists (
-    select 1 from entity
+    select 1 from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
 """, (123, 2, 'value', 0, 123, 2, 123, 1)),
@@ -104,10 +104,10 @@ select %s, %s, %s, %s, coalesce((
     limit 1
 ), 1)
 where exists (
-    select 1 from entity
+    select 1 from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
 """, (123, 2, 'window', 0, 123, 2, 123, 1)),
@@ -154,10 +154,10 @@ select %s, %s, %s, %s, coalesce((
     limit 1
 ), 1)
 where exists (
-    select 1 from entity
+    select 1 from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
 """, (123, 3, 'value', 0, 123, 3, 123, 1)),
@@ -195,10 +195,10 @@ select %s, %s, %s, %s, coalesce((
     limit 1
 ), 1)
 where exists (
-    select 1 from entity
+    select 1 from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
 """, (123, 2, 'value', 0, 123, 2, 123, 1)),

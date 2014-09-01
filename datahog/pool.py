@@ -66,9 +66,9 @@ class ConnectionPool(object):
             production. To change weights or the list of shards being inserted
             into, append a new plan to the list.
 
-        ``entity_insertion_plan``
+        ``root_insertion_plan``
             A list of two-tuples of shard number and weight, used for a
-            weighted random choice of shard for inserting a new entity. This
+            weighted random choice of shard for inserting a new root node. This
             key is optional, the full list of shards will be used by default.
 
         ``shard_bits``
@@ -125,10 +125,10 @@ class ConnectionPool(object):
                 if key not in shard:
                     raise Exception("missing shard dict key %r" % key)
 
-        if 'entity_insertion_plan' not in conf:
-            conf['entity_insertion_plan'] = [(s['shard'], 1)
+        if 'root_insertion_plan' not in conf:
+            conf['root_insertion_plan'] = [(s['shard'], 1)
                     for s in conf['shards']]
-        _prepare_plan(conf['entity_insertion_plan'])
+        _prepare_plan(conf['root_insertion_plan'])
 
     def start(self):
         '''Initiate the DB connections
@@ -171,8 +171,8 @@ class ConnectionPool(object):
         shard = self._out.pop(id(conn))
         self._conns[shard].put(conn)
 
-    def shard_by_guid(self, guid):
-        return guid >> (64 - self.shardbits)
+    def shard_by_id(self, id):
+        return id >> (64 - self.shardbits)
 
     def shards_for_lookup_hash(self, digest):
         num = _int_hash(digest)
@@ -206,8 +206,8 @@ class ConnectionPool(object):
     shard_for_phonetic_write = shard_for_prefix_write
     shards_for_lookup_phonetic = shards_for_lookup_prefix
 
-    def shard_for_entity_write(self):
-        plan = self._dbconf['entity_insertion_plan']
+    def shard_for_root_insert(self):
+        plan = self._dbconf['root_insertion_plan']
         rand = random.randrange(plan[-1][0])
         index = bisect.bisect_right(plan, (rand, 99999999999))
         return plan[index][1]
@@ -236,12 +236,12 @@ class ConnectionPool(object):
 
         return conn
 
-    def get_by_guid(self, guid, replace=True, timeout=None):
-        return self.get_by_shard(self.shard_by_guid(guid), replace, timeout)
+    def get_by_id(self, id, replace=True, timeout=None):
+        return self.get_by_shard(self.shard_by_id(id), replace, timeout)
 
-    def get_for_entity_write(self, replace=True, timeout=None):
+    def get_for_root_insert(self, replace=True, timeout=None):
         return self.get_by_shard(
-                self.shard_for_entity_write(), replace, timeout)
+                self.shard_for_root_insert(), replace, timeout)
 
     def backoff(self):
         yield 0 # single immediate retry

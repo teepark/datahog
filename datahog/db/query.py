@@ -10,63 +10,6 @@ from ..const import context, storage, table, util
 _missing = object() # default argument sentinel
 
 
-def insert_entity(cursor, ctx, flags=0):
-    cursor.execute("""
-insert into entity (ctx, flags)
-values (%s, %s)
-returning guid
-""", (ctx, flags))
-
-    return cursor.fetchone()[0]
-
-
-def select_entity(cursor, guid, ctx):
-    cursor.execute("""
-select flags
-from entity
-where
-    time_removed is null
-    and guid=%s
-    and ctx=%s
-""", (guid, ctx))
-
-    if not cursor.rowcount:
-        return None
-
-    return {'guid': guid, 'ctx': ctx, 'flags': cursor.fetchone()[0]}
-
-
-def select_entities(cursor, guid_ctx_pairs):
-    flat_pairs = reduce(lambda a, b: a.extend(b) or a, guid_ctx_pairs, [])
-
-    cursor.execute("""
-select guid, ctx, flags
-from entity
-where
-    time_removed is null
-    and (guid, ctx) in (%s)
-""" % (','.join('(%s, %s)' for p in guid_ctx_pairs),), flat_pairs)
-
-    return [{
-            'guid': guid,
-            'ctx': ctx,
-            'flags': flags,
-        } for guid, ctx, flags in cursor.fetchall()]
-
-
-def remove_entity(cursor, guid, ctx):
-    cursor.execute("""
-update entity
-set time_removed=now()
-where
-    time_removed is null
-    and guid=%s
-    and ctx=%s
-""", (guid, ctx))
-
-    return bool(cursor.rowcount)
-
-
 def select_property(cursor, base_id, ctx):
     if util.ctx_storage(ctx) == storage.INT:
         val_field = 'num'
@@ -135,7 +78,7 @@ with existencequery as (
     from %s
     where
         time_removed is null
-        and guid=%%s
+        and id=%%s
         and ctx=%%s
 ),
 updatequery as (
@@ -378,7 +321,7 @@ where exists (
     select 1 from %s
     where
         time_removed is null
-        and guid=%%s
+        and id=%%s
         and ctx=%%s
 )
 """ % (base_tbl,),
@@ -389,7 +332,7 @@ with existence as (
     select 1 from %s
     where
         time_removed is null
-        and guid=%%s
+        and id=%%s
         and ctx=%%s
 ), increment as (
     update alias
@@ -544,14 +487,14 @@ returning value, ctx
 
 def insert_relationship(cursor, base_id, rel_id, ctx, forward, index, flags):
     if forward:
-        guid_tbl, guid_ctx = util.ctx_base(ctx)
-        guid = base_id
-        guid_col = 'base_id'
+        id_tbl, id_ctx = util.ctx_base(ctx)
+        id = base_id
+        id_col = 'base_id'
     else:
-        guid_tbl, guid_ctx = util.ctx_rel(ctx)
-        guid = rel_id
-        guid_col = 'rel_id'
-    guid_tbl = table.NAMES[guid_tbl]
+        id_tbl, id_ctx = util.ctx_rel(ctx)
+        id = rel_id
+        id_col = 'rel_id'
+    id_tbl = table.NAMES[id_tbl]
 
     if index is None:
         cursor.execute("""
@@ -570,15 +513,15 @@ where exists (
     from %s
     where
         time_removed is null
-        and guid=%%s
+        and id=%%s
         and ctx=%%s
 )
 returning 1
-""" % (guid_col, guid_tbl), (
+""" % (id_col, id_tbl), (
         base_id, rel_id, ctx, forward,
-        guid, ctx, forward,
+        id, ctx, forward,
         flags,
-        guid, guid_ctx))
+        id, id_ctx))
 
     else:
         cursor.execute("""
@@ -587,7 +530,7 @@ with eligible as (
     from %s
     where
         time_removed is null
-        and guid=%%s
+        and id=%%s
         and ctx=%%s
 ), bump as (
     update relationship
@@ -604,23 +547,23 @@ insert into relationship (base_id, rel_id, ctx, forward, pos, flags)
 select %%s, %%s, %%s, %%s, %%s, %%s
 where exists (select 1 from eligible)
 returning 1
-""" % (guid_tbl, guid_col), (guid, guid_ctx,
-            forward, guid, ctx, index,
+""" % (id_tbl, id_col), (id, id_ctx,
+            forward, id, ctx, index,
             base_id, rel_id, ctx, forward, index, flags))
 
     return cursor.rowcount
 
 
-def select_relationships(cursor, guid, ctx, forward, limit, start, other_guid=_missing):
+def select_relationships(cursor, id, ctx, forward, limit, start, other_id=_missing):
     here_name = "base_id" if forward else "rel_id"
     other_name = "rel_id" if forward else "base_id"
 
-    if other_guid is _missing:
+    if other_id is _missing:
         clause = ""
-        params = (guid, ctx, forward, start, limit)
+        params = (id, ctx, forward, start, limit)
     else:
         clause = "and %s=%%s" % (other_name,)
-        params = (guid, ctx, forward, start, other_guid, limit)
+        params = (id, ctx, forward, start, other_id, limit)
 
     cursor.execute("""
 select %s, flags, pos
@@ -637,20 +580,20 @@ limit %%s
 """ % (other_name, here_name, clause), params)
 
     return [{
-            here_name: guid,
+            here_name: id,
             'flags': flags,
-            other_name: other_guid,
+            other_name: other_id,
             'ctx': ctx,
             'pos': pos}
-        for other_guid, flags, pos in cursor.fetchall()]
+        for other_id, flags, pos in cursor.fetchall()]
 
 
 def remove_relationship(cursor, base_id, rel_id, ctx, forward):
     if forward:
-        anchor_guid = base_id
+        anchor_id = base_id
         anchor_col = "base_id"
     else:
-        anchor_guid = rel_id
+        anchor_id = rel_id
         anchor_col = "rel_id"
 
     cursor.execute("""
@@ -678,7 +621,7 @@ with removal as (
 select 1 from removal
 """ % (anchor_col,), (
         base_id, ctx, forward, rel_id,
-        anchor_guid, ctx, forward))
+        anchor_id, ctx, forward))
 
     return bool(cursor.rowcount)
 
@@ -761,7 +704,7 @@ returning 1
 
 def reorder_relationship(cursor, base_id, rel_id, ctx, forward, pos):
     anchor_col = "base_id" if forward else "rel_id"
-    anchor_guid = base_id if forward else rel_id
+    anchor_id = base_id if forward else rel_id
 
     cursor.execute("""
 with oldpos as (
@@ -802,7 +745,7 @@ with oldpos as (
 select exists (select 1 from move)
 """ % (anchor_col,), (
         forward, base_id, ctx, rel_id,
-        forward, anchor_guid, ctx, pos,
+        forward, anchor_id, ctx, pos,
         pos,
         forward, base_id, ctx, rel_id))
 
@@ -814,46 +757,53 @@ def insert_node(cursor, base_id, ctx, value, flags):
         val_field = 'num'
     else:
         val_field = 'value'
-    base_tbl, base_ctx = util.ctx_base(ctx)
-    base_tbl = table.NAMES[base_tbl]
+
+    if base_id is None:
+        existence = ""
+        params = (ctx, value, flags)
+    else:
+        base_ctx = util.ctx_base_ctx(ctx)
+        existence = """
+where exists (
+    select 1
+    from node
+    where
+        time_removed is null
+        and id=%s
+        and ctx=%s
+)"""
+        params = (ctx, value, flags, base_id, base_ctx)
 
     cursor.execute("""
 insert into node (ctx, %s, flags)
 select %%s, %%s, %%s
-where exists (
-    select 1
-    from %s
-    where
-        time_removed is null
-        and guid=%%s
-        and ctx=%%s
-)
-returning guid
-""" % (val_field, base_tbl), (ctx, value, flags, base_id, base_ctx))
+%s
+returning id
+""" % (val_field, existence), params)
 
     if not cursor.rowcount:
         return None
 
     return {
-        'guid': cursor.fetchone()[0],
+        'id': cursor.fetchone()[0],
         'ctx': ctx,
         'flags': flags,
         'value': value,
     }
 
 
-def insert_edge(cursor, base_id, ctx, child_id, pos=None, base_ctx=None):
-    if base_ctx is None:
-        where, where_params = 'true', ()
-    else:
+def insert_edge(cursor, base_id, ctx, child_id, pos=None, check=False):
+    if check:
         where = '''exists(
-    select 1 from %s
+    select 1 from node
     where
         time_removed is null
-        and guid=%%s
-        and ctx=%%s
-)''' % table.NAMES[util.ctx_tbl(base_ctx)]
-        where_params = (base_id, base_ctx)
+        and id=%s
+        and ctx=%s
+)'''
+        where_params = (base_id, util.ctx_base_ctx(ctx))
+    else:
+        where, where_params = 'true', ()
 
     if pos is None:
         cursor.execute('''
@@ -903,7 +853,7 @@ select flags, %s
 from node
 where
     time_removed is null
-    and guid=%%s
+    and id=%%s
     and ctx=%%s
 """ % (val_field,), (nid, ctx))
 
@@ -913,7 +863,7 @@ where
     flags, value = cursor.fetchone()
 
     return {
-        'guid': nid,
+        'id': nid,
         'ctx': ctx,
         'flags': flags,
         'value': value
@@ -934,27 +884,26 @@ where
     return bool(cursor.rowcount)
 
 
-def select_nodes(cursor, guid_ctx_pairs):
-    flat_pairs = reduce(lambda a, b: a.extend(b) or a, guid_ctx_pairs, [])
+def select_nodes(cursor, id_ctx_pairs):
+    flat_pairs = reduce(lambda a, b: a.extend(b) or a, id_ctx_pairs, [])
 
-    #TODO: EXPLAIN this query
     cursor.execute("""
-select guid, ctx, flags, num, value
+select id, ctx, flags, num, value
 from node
 where
     time_removed is null
-    and (guid, ctx) in (%s)
-""" % (','.join('(%s, %s)' for p in guid_ctx_pairs),), flat_pairs)
+    and (id, ctx) in (%s)
+""" % (','.join('(%s, %s)' for p in id_ctx_pairs),), flat_pairs)
 
     return [{
-            'guid': guid,
+            'id': id,
             'ctx': ctx,
             'flags': flags,
             'value': num if util.ctx_storage(ctx) == storage.INT else val,
-        } for guid, ctx, flags, num, val in cursor.fetchall()]
+        } for id, ctx, flags, num, val in cursor.fetchall()]
 
 
-def select_node_guids(cursor, base_id, limit, pos, ctx):
+def select_node_ids(cursor, base_id, limit, pos, ctx):
     cursor.execute("""
 select child_id, ctx, pos
 from edge
@@ -991,7 +940,7 @@ update node
 set %s=%%s, %s=null
 where
     time_removed is null
-    and guid=%%s
+    and id=%%s
     and ctx=%%s
     %s
 """ % (val_field, other_field, oldval_where), params)
@@ -1006,7 +955,7 @@ update node
 set num=num+%s
 where
     time_removed is null
-    and guid=%s
+    and id=%s
     and ctx=%s
 returning num
 """, (by, nid, ctx))
@@ -1022,7 +971,7 @@ set num=case
     end
 where
     time_removed is null
-    and guid=%%s
+    and id=%%s
     and ctx=%%s
 returning num
 """ % (op,), (by, limit, by, limit, nid, ctx))
@@ -1134,8 +1083,8 @@ update node
 set time_removed=now()
 where
     time_removed is null
-    and guid in (%s)
-returning guid
+    and id in (%s)
+returning id
 """ % (','.join('%s' for n in nodes),), nodes)
 
     return [r[0] for r in cursor.fetchall()]
@@ -1162,7 +1111,7 @@ where exists (
     select 1 from %s
     where
         time_removed is null
-        and guid=%%s
+        and id=%%s
         and ctx=%%s
 )
 """ % (base_tbl,), (
@@ -1175,7 +1124,7 @@ with existence as (
     select 1 from %s
     where
         time_removed is null
-        and guid=%%s
+        and id=%%s
         and ctx=%%s
 ), increment as (
 update name

@@ -7,5 +7,4 @@ drop table relationship;
 drop table alias_lookup;
 drop table alias;
 drop table property;
-drop table entity;
-drop sequence guids;
+drop sequence node_ids;

@@ -18,7 +18,7 @@ def ctx_base_ctx(ctx):
     "get the context of a context's base_id object"
     if ctx not in context.META:
         return None
-    meta = context.META[ctx][1]
+    meta = context.META[ctx][1] or ()
 
     if 'base_ctx' not in meta:
         return None
@@ -65,7 +65,7 @@ def ctx_rel_tblname(ctx):
 def ctx_storage(ctx):
     "return the storage type for a context"
     meta = context.META.get(ctx)
-    return meta and meta[1].get('storage')
+    return (meta[1] or {}).get('storage', storage.NULL)
 
 
 def ctx_schema(ctx):

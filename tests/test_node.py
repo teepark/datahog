@@ -19,7 +19,7 @@ from pgmock import *
 class NodeTests(base.TestCase):
     def setUp(self):
         super(NodeTests, self).setUp()
-        datahog.set_context(1, datahog.ENTITY)
+        datahog.set_context(1, datahog.NODE)
         datahog.set_context(2, datahog.NODE, {
             'base_ctx': 1, 'storage': datahog.storage.INT
         })
@@ -28,8 +28,8 @@ class NodeTests(base.TestCase):
         add_fetch_result([(1234,)])
         add_fetch_result([(1,)])
         self.assertEqual(
-            datahog.node.create(self.p, 123, 2, 12),
-            {'guid': 1234, 'ctx': 2, 'value': 12, 'flags': set()})
+            datahog.node.create(self.p, 2, 12, 123),
+            {'id': 1234, 'ctx': 2, 'value': 12, 'flags': set()})
 
         self.assertEqual(eventlog, [
             GET_CURSOR,
@@ -38,13 +38,13 @@ insert into node (ctx, num, flags)
 select %s, %s, %s
 where exists (
     select 1
-    from entity
+    from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
-returning guid
+returning id
 """, (2, 12, 0, 123, 1)),
             ROWCOUNT,
             FETCH_ONE,
@@ -69,8 +69,8 @@ where true
         add_fetch_result([(1234,)])
         add_fetch_result([(1,)])
         self.assertEqual(
-                datahog.node.create(self.p, 123, 2, 12, 5),
-                {'guid': 1234, 'ctx': 2, 'value': 12, 'flags': set()})
+                datahog.node.create(self.p, 2, 12, 123, 5),
+                {'id': 1234, 'ctx': 2, 'value': 12, 'flags': set()})
 
         self.assertEqual(eventlog, [
             GET_CURSOR,
@@ -79,13 +79,13 @@ insert into node (ctx, num, flags)
 select %s, %s, %s
 where exists (
     select 1
-    from entity
+    from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
-returning guid
+returning id
 """, (2, 12, 0, 123, 1)),
             ROWCOUNT,
             FETCH_ONE,
@@ -116,7 +116,7 @@ returning 1
 
         self.assertEqual(
                 datahog.node.get(self.p, 34789, 2),
-                {'guid': 34789, 'ctx': 2, 'value': 4781, 'flags': set([1, 2, 3])})
+                {'id': 34789, 'ctx': 2, 'value': 4781, 'flags': set([1, 2, 3])})
 
         self.assertEqual(eventlog, [
             GET_CURSOR,
@@ -125,7 +125,7 @@ select flags, num
 from node
 where
     time_removed is null
-    and guid=%s
+    and id=%s
     and ctx=%s
 """, (34789, 2)),
             ROWCOUNT,
@@ -148,19 +148,19 @@ where
         self.assertEqual(
                 datahog.node.batch_get(self.p, [
                     (1234, 2), (1235, 2), (1236, 2), (1237, 3)]),
-                [{'guid': 1234, 'ctx': 2, 'flags': set([1, 3]), 'value': 3478},
+                [{'id': 1234, 'ctx': 2, 'flags': set([1, 3]), 'value': 3478},
                 None,
-                {'guid': 1236, 'ctx': 2, 'flags': set([1]), 'value': 3782},
-                {'guid': 1237, 'ctx': 3, 'flags': set(), 'value': 'string value'}])
+                {'id': 1236, 'ctx': 2, 'flags': set([1]), 'value': 3782},
+                {'id': 1237, 'ctx': 3, 'flags': set(), 'value': 'string value'}])
 
         self.assertEqual(eventlog, [
             GET_CURSOR,
             EXECUTE("""
-select guid, ctx, flags, num, value
+select id, ctx, flags, num, value
 from node
 where
     time_removed is null
-    and (guid, ctx) in ((%s,%s), (%s,%s), (%s,%s), (%s,%s))
+    and (id, ctx) in ((%s,%s), (%s,%s), (%s,%s), (%s,%s))
 """, (1234, 2, 1235, 2, 1236, 2, 1237, 3)),
             FETCH_ALL,
             COMMIT])
@@ -248,9 +248,9 @@ limit %s
         self.assertEqual(
                 datahog.node.get_children(self.p, 1233, 2),
                 ([
-                    {'guid': 1234, 'ctx': 2, 'value': 87422, 'flags': set()},
-                    {'guid': 1235, 'ctx': 2, 'value': 742, 'flags': set()},
-                    {'guid': 1236, 'ctx': 2, 'value': 8928, 'flags': set()}
+                    {'id': 1234, 'ctx': 2, 'value': 87422, 'flags': set()},
+                    {'id': 1235, 'ctx': 2, 'value': 742, 'flags': set()},
+                    {'id': 1236, 'ctx': 2, 'value': 8928, 'flags': set()}
                 ], 3))
 
         self.assertEqual(eventlog, [
@@ -270,11 +270,11 @@ limit %s
             COMMIT,
             GET_CURSOR,
             EXECUTE("""
-select guid, ctx, flags, num, value
+select id, ctx, flags, num, value
 from node
 where
     time_removed is null
-    and (guid, ctx) in ((%s, %s),(%s, %s),(%s, %s))
+    and (id, ctx) in ((%s, %s),(%s, %s),(%s, %s))
 """, (1234, 2, 1235, 2, 1236, 2)),
             FETCH_ALL,
             COMMIT])
@@ -293,7 +293,7 @@ update node
 set num=%s, value=null
 where
     time_removed is null
-    and guid=%s
+    and id=%s
     and ctx=%s
 """, (12, 1234, 2)),
             ROWCOUNT,
@@ -313,7 +313,7 @@ update node
 set num=%s, value=null
 where
     time_removed is null
-    and guid=%s
+    and id=%s
     and ctx=%s
 """, (12, 1234, 2)),
             ROWCOUNT,
@@ -333,7 +333,7 @@ update node
 set num=%s, value=null
 where
     time_removed is null
-    and guid=%s
+    and id=%s
     and ctx=%s
     and num=%s
 """, (12, 1234, 2, 77)),
@@ -354,7 +354,7 @@ update node
 set num=num+%s
 where
     time_removed is null
-    and guid=%s
+    and id=%s
     and ctx=%s
 returning num
 """, (1, 1234, 2)),
@@ -380,7 +380,7 @@ set num=case
     end
 where
     time_removed is null
-    and guid=%s
+    and id=%s
     and ctx=%s
 returning num
 """, (3, 20, 3, 20, 1234, 2)),
@@ -406,7 +406,7 @@ set num=case
     end
 where
     time_removed is null
-    and guid=%s
+    and id=%s
     and ctx=%s
 returning num
 """, (-3, 20, -3, 20, 1234, 2)),
@@ -431,9 +431,9 @@ update node
 set flags=flags | %s
 where
     time_removed is null
-    and guid=%s and ctx=%s
+    and ctx=%s and id=%s
 returning flags
-""", (5, 1324, 2)),
+""", (5, 2, 1324)),
             FETCH_ALL,
             COMMIT])
 
@@ -464,9 +464,9 @@ update node
 set flags=flags | %s
 where
     time_removed is null
-    and guid=%s and ctx=%s
+    and ctx=%s and id=%s
 returning flags
-""", (5, 1324, 2)),
+""", (5, 2, 1324)),
             FETCH_ALL,
             COMMIT])
 
@@ -487,9 +487,9 @@ update node
 set flags=flags & ~%s
 where
     time_removed is null
-    and guid=%s and ctx=%s
+    and ctx=%s and id=%s
 returning flags
-""", (6, 1234, 2)),
+""", (6, 2, 1234)),
             FETCH_ALL,
             COMMIT])
 
@@ -520,9 +520,9 @@ update node
 set flags=flags | %s
 where
     time_removed is null
-    and guid=%s and ctx=%s
+    and ctx=%s and id=%s
 returning flags
-""", (5, 1234, 2)),
+""", (5, 2, 1234)),
             FETCH_ALL,
             COMMIT])
 
@@ -543,9 +543,9 @@ update node
 set flags=flags & ~%s
 where
     time_removed is null
-    and guid=%s and ctx=%s
+    and ctx=%s and id=%s
 returning flags
-""", (6, 1234, 2)),
+""", (6, 2, 1234)),
             FETCH_ALL,
             COMMIT])
 
@@ -566,9 +566,9 @@ update node
 set flags=(flags & ~%s) | %s
 where
     time_removed is null
-    and guid=%s and ctx=%s
+    and ctx=%s and id=%s
 returning flags
-""", (5, 2, 1234 ,2)),
+""", (5, 2, 2, 1234)),
             FETCH_ALL,
             COMMIT])
 
@@ -747,10 +747,10 @@ select %s, %s, %s, coalesce((
     limit 1
 ), 1)
 where exists(
-    select 1 from entity
+    select 1 from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
 """, (124, 2, 1234, 124, 2, 124, 1)),
@@ -800,20 +800,20 @@ with bump as (
         and ctx=%s
         and pos >= %s
         and exists (
-            select 1 from entity
+            select 1 from node
             where
                 time_removed is null
-                and guid=%s
+                and id=%s
                 and ctx=%s
         )
 )
 insert into edge (base_id, ctx, child_id, pos)
 select %s, %s, %s, %s
 where exists (
-    select 1 from entity
+    select 1 from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
 returning 1
@@ -822,12 +822,12 @@ returning 1
             COMMIT])
 
     def test_remove_lone_node(self):
-        guid = 1234
+        id = 1234
         ctx = 2
         base_id = 123
 
         add_fetch_result([None])
-        add_fetch_result([(guid,)])
+        add_fetch_result([(id,)])
         add_fetch_result([])
         add_fetch_result([])
         add_fetch_result([])
@@ -835,7 +835,7 @@ returning 1
         add_fetch_result([])
 
         self.assertEqual(
-                datahog.node.remove(self.p, guid, ctx, base_id),
+                datahog.node.remove(self.p, id, ctx, base_id),
                 True)
 
         self.assertEqual(eventlog, [
@@ -862,7 +862,7 @@ with removal as (
         and pos > (select pos from removal)
 )
 select 1 from removal
-""", (base_id, ctx, guid, base_id, ctx)),
+""", (base_id, ctx, id, base_id, ctx)),
             ROWCOUNT,
             TPC_PREPARE,
             RESET,
@@ -873,9 +873,9 @@ update node
 set time_removed=now()
 where
     time_removed is null
-    and guid in (%s)
-returning guid
-""", (guid,)),
+    and id in (%s)
+returning id
+""", (id,)),
             FETCH_ALL,
             EXECUTE("""
 update property
@@ -883,7 +883,7 @@ set time_removed=now()
 where
     time_removed is null
     and base_id in (%s)
-""", (guid,)),
+""", (id,)),
             ROWCOUNT,
             EXECUTE("""
 update alias
@@ -892,7 +892,7 @@ where
     time_removed is null
     and base_id in (%s)
 returning value, ctx
-""", (guid,)),
+""", (id,)),
             FETCH_ALL,
             EXECUTE("""
 update name
@@ -901,7 +901,7 @@ where
     time_removed is null
     and base_id in (%s)
 returning base_id, ctx, value
-""", (guid,)),
+""", (id,)),
             FETCH_ALL,
             EXECUTE("""
 with forwardrels (base_id, ctx, forward, rel_id) as (
@@ -925,7 +925,7 @@ backwardrels (base_id, ctx, forward, rel_id) as (
 select base_id, ctx, forward, rel_id from forwardrels
 UNION ALL
 select base_id, ctx, forward, rel_id from backwardrels
-""", (guid, guid)),
+""", (id, id)),
             FETCH_ALL,
             EXECUTE("""
 update edge
@@ -934,7 +934,7 @@ where
     time_removed is null
     and base_id in (%s)
 returning child_id
-""", (guid,)),
+""", (id,)),
             FETCH_ALL,
             TPC_PREPARE,
             RESET,
@@ -944,12 +944,12 @@ returning child_id
     def test_remove_failure(self):
         add_fetch_result([])
 
-        guid = 1234
+        id = 1234
         ctx = 2
         base_id = 123
 
         self.assertEqual(
-                datahog.node.remove(self.p, guid, ctx, base_id),
+                datahog.node.remove(self.p, id, ctx, base_id),
                 False)
 
         self.assertEqual(eventlog, [
@@ -976,7 +976,7 @@ with removal as (
         and pos > (select pos from removal)
 )
 select 1 from removal
-""", (base_id, ctx, guid, base_id, ctx)),
+""", (base_id, ctx, id, base_id, ctx)),
             ROWCOUNT,
             TPC_ROLLBACK])
 

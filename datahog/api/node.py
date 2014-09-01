@@ -10,27 +10,27 @@ from ..db import query, txn
 
 
 __all__ = ['create', 'get', 'batch_get', 'child_of', 'list_children',
-        'get_children', 'update', 'increment', 'add_flags', 'clear_flags',
-        'set_flags', 'move', 'shift', 'remove']
+        'get_children', 'update', 'increment', 'set_flags', 'move',
+        'shift', 'remove']
 
 
 _missing = object()
 
 
-def create(pool, base_id, ctx, value, index=None, flags=None, timeout=None):
+def create(pool, ctx, value, base_id=None, index=None, flags=None, timeout=None):
     '''make a new node
 
     :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the parent object
-
     :param int ctx: the node's context
 
     :param value:
         the value for the node. depending on the ``ctx``'s configuration,
         this might be different types. see `storage types`_ for more on that.
+
+    :param int base_id: the id of the parent object, if it has one
 
     :param int index:
         insert the new node into position ``index`` for the ``base_id/ctx``,
@@ -43,13 +43,17 @@ def create(pool, base_id, ctx, value, index=None, flags=None, timeout=None):
         of ``None`` means no limit
 
     :returns:
-        a node dict, containing keys ``guid``, ``ctx``, ``value``, ``flags``
+        a node dict, containing keys ``id``, ``ctx``, ``value``, ``flags``
 
     :raises ReadOnly: if the provided pool is read-only
 
     :raises BadContext:
         if ``ctx`` is not a context associated with table.NODE, or doesn't
         have both ``base_ctx`` and ``storage`` configured
+
+    :raises MissingParent:
+        if ``ctx`` is configured with a ``base_ctx``, but no ``base_id``
+        was given
 
     :raises StorageClassError:
         if ``value`` doesn't have the right type for the configured ``storage``
@@ -61,8 +65,11 @@ def create(pool, base_id, ctx, value, index=None, flags=None, timeout=None):
         raise error.ReadOnly()
 
     base_ctx = util.ctx_base_ctx(ctx)
-    if util.ctx_tbl(ctx) != table.NODE or base_ctx is None:
+    if util.ctx_tbl(ctx) != table.NODE:
         raise error.BadContext(ctx)
+
+    if base_ctx is not None and base_id is None:
+        raise error.MissingParent()
 
     flags = util.flags_to_int(ctx, flags or [])
     value = util.storage_wrap(ctx, value)
@@ -70,8 +77,7 @@ def create(pool, base_id, ctx, value, index=None, flags=None, timeout=None):
     node = txn.create_node(pool, base_id, ctx, value, index, flags, timeout)
 
     if node is None:
-        base_tbl = table.NAMES[util.ctx_tbl(base_ctx)]
-        raise error.NoObject("%s<%d/%d>" % (base_tbl, base_ctx, base_id))
+        raise error.NoObject("node<%d/%r>" % (base_ctx, base_id))
 
     node['flags'] = util.int_to_flags(ctx, node['flags'])
     node['value'] = util.storage_unwrap(ctx, node['value'])
@@ -86,7 +92,7 @@ def get(pool, node_id, ctx, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int node_id: the guid of the node to fetch
+    :param int node_id: the id of the node to fetch
 
     :param int ctx: the node's context
 
@@ -95,7 +101,7 @@ def get(pool, node_id, ctx, timeout=None):
         of ``None`` means no limit
 
     :returns:
-        a node dict (contains ``guid``, ``ctx``, ``value``, and ``flags``
+        a node dict (contains ``id``, ``ctx``, ``value``, and ``flags``
         keys), or ``None`` if there is no such node
 
     :raises BadContext:
@@ -107,7 +113,7 @@ def get(pool, node_id, ctx, timeout=None):
             or util.ctx_storage(ctx) is None):
         raise error.BadContext(ctx)
 
-    with pool.get_by_guid(node_id, timeout=timeout) as conn:
+    with pool.get_by_id(node_id, timeout=timeout) as conn:
         node = query.select_node(conn.cursor(), node_id, ctx)
 
     if node is None:
@@ -127,22 +133,22 @@ def batch_get(pool, nid_ctx_pairs, timeout=None):
         getting a database connection
 
     :param list nid_ctx_pairs:
-        list of ``(guid, ctx)`` tuples describing the nodes to fetch
+        list of ``(id, ctx)`` tuples describing the nodes to fetch
 
     :param timeout:
         maximum time in seconds that the method is allowed to take; the default
         of ``None`` means no limit
 
     :returns:
-        a list of node dicts containing ``guid``, ``ctx``, ``value`` and
-        ``flags`` keys. any ``(guid, ctx)`` pairs from ``nid_ctx_pairs`` for
+        a list of node dicts containing ``id``, ``ctx``, ``value`` and
+        ``flags`` keys. any ``(id, ctx)`` pairs from ``nid_ctx_pairs`` for
         which no node could be found, a None will be in that position in the
         results list
     '''
     order = {nid: i for i, (nid, ctx) in enumerate(nid_ctx_pairs)}
     groups = {}
     for nid, ctx in nid_ctx_pairs:
-        groups.setdefault(pool.shard_by_guid(nid), []).append((nid, ctx))
+        groups.setdefault(pool.shard_by_id(nid), []).append((nid, ctx))
 
     if timeout is not None:
         deadline = time.time() + timeout
@@ -160,7 +166,7 @@ def batch_get(pool, nid_ctx_pairs, timeout=None):
     for node in nodes:
         node['flags'] = util.int_to_flags(node['ctx'], node['flags'])
         node['value'] = util.storage_unwrap(node['ctx'], node['value'])
-        results[order[node['guid']]] = node
+        results[order[node['id']]] = node
 
     return results
 
@@ -172,11 +178,11 @@ def child_of(pool, node_id, ctx, base_id, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int node_id: the child node's guid
+    :param int node_id: the child node's id
 
     :param int ctx: the child node's context
 
-    :param int base_id: the parent guid
+    :param int base_id: the parent node's id
 
     :param timeout:
         maximum time in seconds to allow the method to block. default of
@@ -193,19 +199,19 @@ def child_of(pool, node_id, ctx, base_id, timeout=None):
             or util.ctx_storage(ctx) is None):
         raise error.BadContext(ctx)
 
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+    with pool.get_by_id(base_id, timeout=timeout) as conn:
         return query.select_edge_exists(
                 conn.cursor(), node_id, ctx, base_id)
 
 
 def list_children(pool, base_id, ctx, limit=100, start=0, timeout=None):
-    '''list the nodes' guids under a common parent
+    '''list the nodes' ids under a common parent
 
     :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the parent object
+    :param int base_id: the id of the parent node
 
     :param int ctx: context of the nodes
 
@@ -220,7 +226,7 @@ def list_children(pool, base_id, ctx, limit=100, start=0, timeout=None):
         of ``None`` means no limit
 
     :returns:
-        two tuple with a list of ints of the guids of the nodes, and an integer
+        two tuple with a list of ints of the ids of the nodes, and an integer
         that can be used as ``start`` in subsequent ``list_children`` calls to
         pick up paging after this result list
 
@@ -233,8 +239,8 @@ def list_children(pool, base_id, ctx, limit=100, start=0, timeout=None):
             or util.ctx_storage(ctx) is None):
         raise error.BadContext(ctx)
 
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
-        results = query.select_node_guids(
+    with pool.get_by_id(base_id, timeout=timeout) as conn:
+        results = query.select_node_ids(
                 conn.cursor(), base_id, limit, start, ctx)
 
     end = results[-1][2] + 1 if results else 0
@@ -249,7 +255,7 @@ def get_children(pool, base_id, ctx, limit=100, start=0, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the parent object
+    :param int base_id: the id of the parent node
 
     :param int ctx: context of the nodes
 
@@ -264,7 +270,7 @@ def get_children(pool, base_id, ctx, limit=100, start=0, timeout=None):
         of ``None`` means no limit
 
     :returns:
-        two tuple with a list of node dicts (each containing ``guid``, ``ctx``,
+        two tuple with a list of node dicts (each containing ``id``, ``ctx``,
         ``value`` and ``flags`` keys), and an integer that can be used as
         ``start`` in subsequent ``get_children`` calls to pick up paging after
         this result list
@@ -293,7 +299,7 @@ def update(pool, node_id, ctx, value, old_value=_missing, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int node_id: guid of the node
+    :param int node_id: id of the node
 
     :param int ctx: the node's context
 
@@ -327,7 +333,7 @@ def update(pool, node_id, ctx, value, old_value=_missing, timeout=None):
 
     value = util.storage_wrap(ctx, value)
 
-    with pool.get_by_guid(node_id, timeout=timeout) as conn:
+    with pool.get_by_id(node_id, timeout=timeout) as conn:
         if old_value is _missing:
             return query.update_node(conn.cursor(), node_id, ctx, value)
         else:
@@ -343,7 +349,7 @@ def increment(pool, node_id, ctx, by=1, limit=None, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int node_id: the guid of the parent object
+    :param int node_id: the id of the parent node
 
     :param int ctx: the node's context
 
@@ -373,80 +379,12 @@ def increment(pool, node_id, ctx, by=1, limit=None, timeout=None):
         raise error.StorageClassError(
             'cannot increment a ctx that is not configured for INT')
 
-    with pool.get_by_guid(node_id, timeout=timeout) as conn:
+    with pool.get_by_id(node_id, timeout=timeout) as conn:
         if limit is None:
             return query.increment_node(conn.cursor(), node_id, ctx, by)
         else:
             return query.increment_node(
                     conn.cursor(), node_id, ctx, by, limit)
-
-
-def add_flags(pool, node_id, ctx, flags, timeout=None):
-    '''apply flags to a stored node
-
-    :param ConnectionPool pool:
-        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
-        getting a database connection
-
-    :param int node_id: the guid of the node
-
-    :param int ctx: the node's context
-
-    :param iterable flags: the flags to add
-
-    :param timeout:
-        maximum time in seconds that the method is allowed to take; the default
-        of ``None`` means no limit
-
-    :returns:
-        the new set of flags, or None if there is no node for the
-        given ``node_id/ctx``
-
-    :raises ReadOnly: if given a read-only ConnectionPool
-
-    :raises BadContext:
-        if the ``ctx`` is not a registered context associated with
-        table.NODE
-
-    :raises BadFlag:
-        if ``flags`` contains something that is not a registered flag
-        associated with ``ctx``
-    '''
-    return set_flags(pool, node_id, ctx, flags, [], timeout)
-
-
-def clear_flags(pool, node_id, ctx, flags, timeout=None):
-    '''remove flags from a stored node
-
-    :param ConnectionPool pool:
-        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
-        getting a database connection
-
-    :param int node_id: the guid of the node
-
-    :param int ctx: the node's context
-
-    :param iterable flags: the flags to clear
-
-    :param timeout:
-        maximum time in seconds that the method is allowed to take; the default
-        of ``None`` means no limit
-
-    :returns:
-        the new set of flags, or None if there is no node for the
-        given ``node_id/ctx``
-
-    :raises ReadOnly: if given a read-only ConnectionPool
-
-    :raises BadContext:
-        if the ``ctx`` is not a registered context associated with
-        table.NODE
-
-    :raises BadFlag:
-        if ``flags`` contains something that is not a registered flag
-        associated with ``ctx``
-    '''
-    return set_flags(pool, node_id, ctx, [], flags, timeout)
 
 
 def set_flags(pool, node_id, ctx, add, clear, timeout=None):
@@ -456,7 +394,7 @@ def set_flags(pool, node_id, ctx, add, clear, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int node_id: the guid of the node
+    :param int node_id: the id of the node
 
     :param int ctx: the node's context
 
@@ -470,7 +408,7 @@ def set_flags(pool, node_id, ctx, add, clear, timeout=None):
 
     :returns:
         the new set of flags, or None if there is no node for the given
-        ``guid/ctx``
+        ``id/ctx``
 
     :raises BadContext:
         if the ``ctx`` is not a registered context associated with table.ENTITY
@@ -488,9 +426,9 @@ def set_flags(pool, node_id, ctx, add, clear, timeout=None):
     add = util.flags_to_int(ctx, add)
     clear = util.flags_to_int(ctx, clear)
 
-    with pool.get_by_guid(node_id, timeout=timeout) as conn:
+    with pool.get_by_id(node_id, timeout=timeout) as conn:
         result = query.set_flags(conn.cursor(), 'node', add, clear,
-                {'guid': node_id, 'ctx': ctx})
+                {'id': node_id, 'ctx': ctx})
 
     if not result:
         return None
@@ -505,11 +443,11 @@ def shift(pool, node_id, ctx, base_id, index, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int node_id: the guid of the node
+    :param int node_id: the id of the node
 
     :param int ctx: the node's ctx
 
-    :param int base_id: the guid of the node's parent object
+    :param int base_id: the id of the parent node
 
     :param int index: the 0-indexed position to which to move the node
 
@@ -522,11 +460,17 @@ def shift(pool, node_id, ctx, base_id, index, timeout=None):
         ``False`` if there is no node for the given ``node_id/ctx/base_id``
 
     :raises ReadOnly: if given a read-only pool
+
+    :raises IsRoot:
+        if ``ctx`` is configured as a root node type (no ``base_ctx``)
     '''
     if pool.readonly:
         raise error.ReadOnly()
 
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+    if util.ctx_base_ctx(ctx) is None:
+        raise error.IsRoot(ctx)
+
+    with pool.get_by_id(base_id, timeout=timeout) as conn:
         return query.reorder_edge(conn.cursor(), base_id, ctx, node_id, index)
 
 
@@ -537,13 +481,13 @@ def move(pool, node_id, ctx, base_id, new_base_id, index=None, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int node_id: the guid of the node
+    :param int node_id: the id of the node
 
     :param int ctx: the node's ctx
 
-    :param int base_id: the guid of the node's current parent object
+    :param int base_id: the id of the current parent node
 
-    :param int new_base_id: the guid of the target parent
+    :param int new_base_id: the id of the target parent node
 
     :param int index:
         the position in the nodes under ``new_base_id/ctx`` into which to
@@ -562,6 +506,9 @@ def move(pool, node_id, ctx, base_id, new_base_id, index=None, timeout=None):
 
     :raises BadContext:
         if ``ctx`` doesn't correspond to a ``table.NODE`` context
+
+    :raises IsRoot:
+        if ``ctx`` is configured as a root node type (no ``base_ctx``)
     '''
     if pool.readonly:
         raise error.ReadOnly()
@@ -569,22 +516,25 @@ def move(pool, node_id, ctx, base_id, new_base_id, index=None, timeout=None):
     if util.ctx_tbl(ctx) != table.NODE:
         raise error.BadContext(ctx)
 
+    if util.ctx_base_ctx(ctx) is None:
+        raise error.IsRoot(ctx)
+
     return txn.move_node(
             pool, node_id, ctx, base_id, new_base_id, index, timeout)
 
 
-def remove(pool, node_id, ctx, base_id, timeout=None):
+def remove(pool, node_id, ctx, base_id=None, timeout=None):
     '''remove a node and all associated objects
 
     :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int node_id: the guid of the node
+    :param int node_id: the id of the node
 
     :param int ctx: the node's ctx
 
-    :param int base_id: the guid of the node's parent object
+    :param int base_id: the id of the node's parent, if it has one
 
     :param timeout:
         maximum time in seconds that the method is allowed to take; the default

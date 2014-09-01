@@ -236,7 +236,7 @@ def _set_alias(pool, base_id, ctx, alias, flags, index, timer):
         timer.conn = None
 
     with tpc.elsewhere():
-        with pool.get_by_guid(base_id) as conn:
+        with pool.get_by_id(base_id) as conn:
             timer.conn = conn
             try:
                 result = query.insert_alias(
@@ -307,7 +307,7 @@ def _set_alias_flags(pool, base_id, ctx, alias, add, clear, timer):
     result_flags = result[0]
 
     with tpc.elsewhere():
-        with pool.get_by_guid(base_id) as conn:
+        with pool.get_by_id(base_id) as conn:
             timer.conn = conn
             try:
                 result = query.set_flags(conn.cursor(), 'alias', add, clear,
@@ -373,7 +373,7 @@ def _remove_alias(pool, base_id, ctx, alias, timer):
         pool.put(conn)
 
     with tpc.elsewhere():
-        with pool.get_by_guid(base_id) as conn:
+        with pool.get_by_id(base_id) as conn:
             timer.conn = conn
             try:
                 result = query.remove_alias(conn.cursor(), base_id, ctx, alias)
@@ -400,7 +400,7 @@ def create_relationship_pair(pool, base_id, rel_id, ctx, forw_idx, rev_idx,
 
 def _create_relationship_pair(pool, base_id, rel_id, ctx, forw_idx, rev_idx,
         flags, timer):
-    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id),
+    tpc = TwoPhaseCommit(pool, pool.shard_by_id(base_id),
             'create_relationship_pair', (base_id, rel_id, ctx))
     try:
         with tpc as conn:
@@ -427,7 +427,7 @@ def _create_relationship_pair(pool, base_id, rel_id, ctx, forw_idx, rev_idx,
 
     try:
         with tpc.elsewhere():
-            with pool.get_by_guid(rel_id) as conn:
+            with pool.get_by_id(rel_id) as conn:
                 timer.conn = conn
                 try:
                     inserted = query.insert_relationship(conn.cursor(),
@@ -459,7 +459,7 @@ def set_relationship_flags(pool, base_id, rel_id, ctx, add, clear, timeout):
                 pool, base_id, rel_id, ctx, add, clear, timer)
 
 def _set_relationship_flags(pool, base_id, rel_id, ctx, add, clear, timer):
-    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id),
+    tpc = TwoPhaseCommit(pool, pool.shard_by_id(base_id),
             'set_relationship_flags', (base_id, rel_id, ctx, add, clear))
     try:
         with tpc as conn:
@@ -482,7 +482,7 @@ def _set_relationship_flags(pool, base_id, rel_id, ctx, add, clear, timer):
     result_flags = result[0]
 
     with tpc.elsewhere():
-        with pool.get_by_guid(rel_id) as conn:
+        with pool.get_by_id(rel_id) as conn:
             timer.conn = conn
             try:
                 result = query.set_flags(
@@ -508,7 +508,7 @@ def remove_relationship_pair(pool, base_id, rel_id, ctx, timeout):
         return _remove_relationship_pair(pool, base_id, rel_id, ctx, timer)
 
 def _remove_relationship_pair(pool, base_id, rel_id, ctx, timer):
-    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id),
+    tpc = TwoPhaseCommit(pool, pool.shard_by_id(base_id),
             'remove_relationship_pair', (base_id, rel_id, ctx))
     try:
         with tpc as conn:
@@ -526,7 +526,7 @@ def _remove_relationship_pair(pool, base_id, rel_id, ctx, timer):
         pool.put(conn)
 
     with tpc.elsewhere():
-        conn = pool.get_by_guid(rel_id, replace=False)
+        conn = pool.get_by_id(rel_id, replace=False)
         timer.conn = conn
         # manually managing commits/rollbacks and replacing on the pool
         # so we don't get an extra COMMIT when we just ROLLBACKed
@@ -549,26 +549,33 @@ def _remove_relationship_pair(pool, base_id, rel_id, ctx, timer):
 
 
 def create_node(pool, base_id, ctx, value, index, flags, timeout):
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+    if base_id is None:
+        shard = pool.shard_for_root_insert()
+    else:
+        shard = pool.shard_by_id(base_id)
+
+    with pool.get_by_shard(shard, timeout=timeout) as conn:
         cursor = conn.cursor()
         node = query.insert_node(cursor, base_id, ctx, value, flags)
         if node is None:
             return None
 
-        query.insert_edge(cursor, base_id, ctx, node['guid'], index)
+        if base_id is not None:
+            query.insert_edge(cursor, base_id, ctx, node['id'], index, False)
+
         return node
 
 
 def move_node(pool, node_id, ctx, base_id, new_base_id, index, timeout):
-    if pool.shard_by_guid(base_id) == pool.shard_by_guid(new_base_id):
-        with pool.get_by_guid(base_id, timeout=timeout) as conn:
+    if pool.shard_by_id(base_id) == pool.shard_by_id(new_base_id):
+        with pool.get_by_id(base_id, timeout=timeout) as conn:
             cursor = conn.cursor()
             if not query.remove_edge(cursor, base_id, ctx, node_id):
                 return False
 
             base_ctx = util.ctx_base_ctx(ctx)
             if not query.insert_edge(
-                    cursor, new_base_id, ctx, node_id, index, base_ctx):
+                    cursor, new_base_id, ctx, node_id, index, True):
                 conn.rollback()
                 return False
 
@@ -584,7 +591,7 @@ def move_node(pool, node_id, ctx, base_id, new_base_id, index, timeout):
 def _move_node(pool, node_id, ctx, base_id, new_base_id, timer):
     base_ctx = util.ctx_base_ctx(ctx)
 
-    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'move_node',
+    tpc = TwoPhaseCommit(pool, pool.shard_by_id(base_id), 'move_node',
             (node_id, ctx, base_id, new_base_id))
     try:
         with tpc as conn:
@@ -598,7 +605,7 @@ def _move_node(pool, node_id, ctx, base_id, new_base_id, timer):
         timer.conn = None
 
     with tpc.elsewhere():
-        with pool.get_by_guid(new_base_id) as conn:
+        with pool.get_by_id(new_base_id) as conn:
             timer.conn = conn
             try:
                 if not query.insert_edge(conn.cursor(),
@@ -621,7 +628,7 @@ def create_name(pool, base_id, ctx, value, flags, index, timeout):
 def _create_name(pool, base_id, ctx, value, flags, index, timer):
     base_ctx = util.ctx_base_ctx(ctx)
 
-    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'create_name',
+    tpc = TwoPhaseCommit(pool, pool.shard_by_id(base_id), 'create_name',
             (base_id, ctx, value.encode('ascii', 'ignore'), flags, index))
     conn = None
     try:
@@ -825,7 +832,7 @@ def _set_name_flags(pool, base_id, ctx, value, add, clear, timer):
     if lookup_shard is None:
         return None
 
-    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'set_name_flags',
+    tpc = TwoPhaseCommit(pool, pool.shard_by_id(base_id), 'set_name_flags',
             (base_id, ctx, value.encode('ascii', 'ignore'), add, clear))
 
     try:
@@ -1013,7 +1020,7 @@ def reorder_name(pool, base_id, ctx, value, index, timeout):
         return _reorder_name(pool, base_id, ctx, value, index, timer)
 
 def _reorder_name(pool, base_id, ctx, value, index, timer):
-    conn = pool.get_by_guid(base_id, replace=False)
+    conn = pool.get_by_id(base_id, replace=False)
     try:
         result = query.reorder_name(conn.cursor(), base_id, ctx, value, index)
     except Exception:
@@ -1042,7 +1049,7 @@ def _remove_name(pool, base_id, ctx, value, timer):
     lookup_shard = _find_name_lookup_shard(pool, base_id, ctx,
             value.encode('utf8'), timer)
 
-    tpc = TwoPhaseCommit(pool, pool.shard_by_guid(base_id), 'remove_name',
+    tpc = TwoPhaseCommit(pool, pool.shard_by_id(base_id), 'remove_name',
             (base_id, ctx, value.encode('ascii', 'ignore')))
 
     try:
@@ -1156,20 +1163,20 @@ def _remove_lookups(cursor, triples):
     return removed
 
 
-def _remove_local_estates(shard, pool, cursor, estate, entity_base):
-    guids = estate[shard][3][:]
+def _remove_local_estates(shard, pool, cursor, estate, node_base):
+    ids = estate[shard][3][:]
     del estate[shard][3][:]
 
-    while guids:
-        if not entity_base:
-            guids = query.remove_nodes(cursor, guids)
-            if not guids:
+    while ids:
+        if not node_base:
+            ids = query.remove_nodes(cursor, ids)
+            if not ids:
                 break
-        entity_base = False
+        node_base = False
 
-        query.remove_properties_multiple_bases(cursor, guids)
+        query.remove_properties_multiple_bases(cursor, ids)
 
-        aliases = query.remove_aliases_multiple_bases(cursor, guids)
+        aliases = query.remove_aliases_multiple_bases(cursor, ids)
         for value, ctx in aliases:
             digest = hmac.new(pool.digestkey, value, hashlib.sha1).digest()
             # add each alias_lookup to every shard it *might* live on
@@ -1177,34 +1184,34 @@ def _remove_local_estates(shard, pool, cursor, estate, entity_base):
                 group = estate.setdefault(s, (set(), set(), [], []))[0]
                 group.add((digest, ctx))
 
-        names = query.remove_names_multiple_bases(cursor, guids)
+        names = query.remove_names_multiple_bases(cursor, ids)
         for base_id, ctx, value in names:
             for s in pool.shards_for_lookup_prefix(value):
                 group = estate.setdefault(s, (set(), set(), [], []))[1]
                 group.add((base_id, ctx, value))
 
-        removed_rels = query.remove_relationships_multiple_bases(cursor, guids)
+        removed_rels = query.remove_relationships_multiple_bases(cursor, ids)
         for base_id, ctx, forward, rel_id in removed_rels:
             # append each relationship to the shard at the rel_id end
             if forward:
-                s = pool.shard_by_guid(rel_id)
+                s = pool.shard_by_id(rel_id)
             else:
-                s = pool.shard_by_guid(base_id)
+                s = pool.shard_by_id(base_id)
             if s == shard:
                 continue
             item = (base_id, ctx, not forward, rel_id)
             estate.setdefault(s, (set(), set(), [], []))[2].append(item)
 
-        children = query.remove_edges_multiple_bases(cursor, guids)
-        for guid in children:
+        children = query.remove_edges_multiple_bases(cursor, ids)
+        for id in children:
             # append each child node to its shard
-            s = pool.shard_by_guid(guid)
-            estate.setdefault(s, (set(), set(), [], []))[3].append(guid)
+            s = pool.shard_by_id(id)
+            estate.setdefault(s, (set(), set(), [], []))[3].append(id)
 
-        guids = estate[shard][3][:]
+        ids = estate[shard][3][:]
         del estate[shard][3][:]
 
-    alias_lookups, name_lookups, rels, guids = estate[shard]
+    alias_lookups, name_lookups, rels, ids = estate[shard]
 
     if alias_lookups:
         removed = query.remove_alias_lookups_multi(cursor, list(alias_lookups))
@@ -1240,92 +1247,37 @@ def _remove_local_estates(shard, pool, cursor, estate, entity_base):
     estate.pop(shard)
 
 
-def remove_entity(pool, guid, ctx, timeout):
+def remove_node(pool, id, ctx, base_id, timeout):
     timer = Timer(pool, timeout, None)
     if timeout is None:
-        return _remove_entity(pool, guid, ctx, timer)
+        return _remove_node(pool, id, ctx, base_id, timer)
     with timer:
-        return _remove_entity(pool, guid, ctx, timer)
+        return _remove_node(pool, id, ctx, base_id, timer)
 
-def _remove_entity(pool, guid, ctx, timer):
-    shard = pool.shard_by_guid(guid)
-    tpc = TwoPhaseCommit(pool, shard, "remove_entity_start",
-            (guid, ctx, shard))
-    tpcs = [tpc]
-
-    conn = None
-    try:
-        with tpc as conn:
-            timer.conn = conn
-            if not query.remove_entity(conn.cursor(), guid, ctx):
-                tpc.fail()
-                return False
-    finally:
-        if conn is not None:
-            pool.put(conn)
-        timer.conn = None
-
-    estates = {pool.shard_by_guid(guid): (set(), set(), [], [guid])}
-
-    try:
-        while estates:
-            shard = next(iter(estates))
-            tpc = TwoPhaseCommit(pool, shard, 'remove_entity_shard',
-                    (guid, ctx, shard))
-            tpcs.append(tpc)
-
-            try:
-                with tpc as conn:
-                    _remove_local_estates(next(iter(estates)), pool,
-                            conn.cursor(), estates, True)
-            finally:
-                pool.put(conn)
-    except Exception:
-        klass, exc, tb = sys.exc_info()
-        for tpc in tpcs:
-            try:
-                tpc.rollback()
-            except Exception:
-                pass
-        raise klass, exc, tb
-    else:
-        for tpc in tpcs:
-            tpc.commit()
-
-    return True
-
-
-def remove_node(pool, guid, ctx, base_id, timeout):
-    timer = Timer(pool, timeout, None)
-    if timeout is None:
-        return _remove_node(pool, guid, ctx, base_id, timer)
-    with timer:
-        return _remove_node(pool, guid, ctx, base_id, timer)
-
-def _remove_node(pool, guid, ctx, base_id, timer):
-    shard = pool.shard_by_guid(base_id)
+def _remove_node(pool, id, ctx, base_id, timer):
+    shard = pool.shard_by_id(base_id)
     tpc = TwoPhaseCommit(pool, shard, "remove_node_edge",
-            (guid, ctx, base_id, shard))
+            (id, ctx, base_id, shard))
     tpcs = [tpc]
 
     try:
         with tpc as conn:
             timer.conn = conn
             if not query.remove_edge(
-                    conn.cursor(), base_id, ctx, guid):
+                    conn.cursor(), base_id, ctx, id):
                 tpc.fail()
                 return False
     finally:
         pool.put(conn)
         timer.conn = None
 
-    estates = {pool.shard_by_guid(guid): (set(), set(), [], [guid])}
+    estates = {pool.shard_by_id(id): (set(), set(), [], [id])}
 
     try:
         while estates:
             shard = next(iter(estates))
             tpc = TwoPhaseCommit(pool, shard, 'remove_node_shard',
-                    (guid, ctx, base_id, shard))
+                    (id, ctx, base_id, shard))
             tpcs.append(tpc)
 
             try:

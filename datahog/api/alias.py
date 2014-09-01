@@ -10,18 +10,17 @@ from ..const import table, util
 from ..db import query, txn
 
 
-__all__ = ['set', 'lookup', 'list', 'batch', 'add_flags', 'clear_flags',
-        'set_flags', 'shift', 'remove']
+__all__ = ['set', 'lookup', 'list', 'batch', 'set_flags', 'shift', 'remove']
 
 
 def set(pool, base_id, ctx, value, flags=None, index=None, timeout=None):
-    '''set an alias value on a guid object
+    '''set an alias value on a id object
 
     :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the parent object
+    :param int base_id: the id of the parent object
 
     :param int ctx: the alias's context
 
@@ -105,13 +104,13 @@ def lookup(pool, value, ctx, timeout=None):
 
 
 def list(pool, base_id, ctx, limit=100, start=0, timeout=None):
-    '''list the aliases associated with a guid object for a given context
+    '''list the aliases associated with a id object for a given context
 
     :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the parent object
+    :param int base_id: the id of the parent object
 
     :param int ctx: the alias's context
 
@@ -131,7 +130,7 @@ def list(pool, base_id, ctx, limit=100, start=0, timeout=None):
         used as ``start`` in a subsequent call to page forward from after the
         end of this result list.
     '''
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+    with pool.get_by_id(base_id, timeout=timeout) as conn:
         results = query.select_aliases(
                 conn.cursor(), base_id, ctx, limit, start)
 
@@ -168,7 +167,7 @@ def batch(pool, bid_ctx_pairs, timeout=None):
     order = {(bid, ctx): i for i, (bid, ctx) in enumerate(bid_ctx_pairs)}
     groups = {}
     for bid, ctx in bid_ctx_pairs:
-        groups.setdefault(pool.shard_by_guid(bid), []).append((bid, ctx))
+        groups.setdefault(pool.shard_by_id(bid), []).append((bid, ctx))
 
     if timeout is not None:
         deadline = time.time() + timeout
@@ -189,76 +188,6 @@ def batch(pool, bid_ctx_pairs, timeout=None):
     return results
 
 
-def add_flags(pool, base_id, ctx, value, flags, timeout=None):
-    '''apply flags to an existing alias
-
-    :param ConnectionPool pool:
-        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
-        getting a database connection
-
-    :param int base_id: the guid of the parent object
-
-    :param int ctx: the alias's context
-
-    :param unicode value: value of the alias
-
-    :param iterable flags: the flags to add
-
-    :param timeout:
-        maximum time in seconds that the method is allowed to take; the default
-        of ``None`` means no limit
-
-    :returns:
-        the new set of flags, or None if there is no alias for the given
-        ``base_id/ctx/value``
-
-    :raises ReadOnly: if given a read-only pool
-
-    :raises BadContext:
-        if the ``ctx`` is not a registered context for table.ALIAS
-
-    :raises BadFlag:
-        if ``flags`` contains something that is not a registered flag
-        associated with ``ctx``
-    '''
-    return set_flags(pool, base_id, ctx, value, flags, [], timeout)
-
-
-def clear_flags(pool, base_id, ctx, value, flags, timeout=None):
-    '''remove flags from an existing alias
-
-    :param ConnectionPool pool:
-        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
-        getting a database connection
-
-    :param int base_id: the guid of the parent object
-
-    :param int ctx: the alias's context
-
-    :param unicode value: value of the alias
-
-    :param iterable flags: the flags to clear
-
-    :param timeout:
-        maximum time in seconds that the method is allowed to take; the default
-        of ``None`` means no limit
-
-    :returns:
-        the new set of flags, or None if there is no alias for the given
-        ``base_id/ctx/value``
-
-    :raises ReadOnly: if given a read-only pool
-
-    :raises BadContext:
-        if the ``ctx`` is not a registered context for table.ALIAS
-
-    :raises BadFlag:
-        if ``flags`` contains something that is not a registered flag
-        associated with ``ctx``
-    '''
-    return set_flags(pool, base_id, ctx, value, [], flags, timeout)
-
-
 def set_flags(pool, base_id, ctx, value, add, clear, timeout=None):
     '''set and clear flags on an alias
 
@@ -266,7 +195,7 @@ def set_flags(pool, base_id, ctx, value, add, clear, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the parent object
+    :param int base_id: the id of the parent object
 
     :param int ctx: the alias's context
 
@@ -318,7 +247,7 @@ def shift(pool, base_id, ctx, value, index, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the parent object
+    :param int base_id: the id of the parent object
 
     :param int ctx: the alias's context
 
@@ -339,7 +268,7 @@ def shift(pool, base_id, ctx, value, index, timeout=None):
     if pool.readonly:
         raise error.ReadOnly()
 
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+    with pool.get_by_id(base_id, timeout=timeout) as conn:
         return query.reorder_alias(conn.cursor(), base_id, ctx, value, index)
 
 
@@ -350,7 +279,7 @@ def remove(pool, base_id, ctx, value, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the parent object
+    :param int base_id: the id of the parent object
 
     :param int ctx: the alias's context
 

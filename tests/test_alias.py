@@ -16,10 +16,10 @@ import base
 from pgmock import *
 
 
-class PropertyTests(base.TestCase):
+class AliasTests(base.TestCase):
     def setUp(self):
-        super(PropertyTests, self).setUp()
-        datahog.set_context(1, datahog.ENTITY)
+        super(AliasTests, self).setUp()
+        datahog.set_context(1, datahog.NODE)
         datahog.set_context(2, datahog.ALIAS, {'base_ctx': 1})
 
     def test_set(self):
@@ -69,10 +69,10 @@ select %s, %s, %s, coalesce((
     limit 1
 ), 1), %s
 where exists (
-    select 1 from entity
+    select 1 from node
     where
         time_removed is null
-        and guid=%s
+        and id=%s
         and ctx=%s
 )
 """, (123, 2, 'value', 123, 2, 0, 123, 1)),

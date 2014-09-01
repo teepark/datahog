@@ -1,21 +1,7 @@
 
-create extension if not exists fuzzystrmatch;
+--create extension if not exists fuzzystrmatch;
 
-create sequence guids maxvalue %(max)d start with %(start)d;
-
-
--- ENTITIES --
-
-create table entity (
-  guid bigint not null default nextval('guids'),
-  flags smallint default 0 not null,
-  time_removed timestamp default null,
-  ctx smallint not null
-);
-
-create unique index entity_guid on entity (
-  guid
-) where time_removed is null;
+create sequence node_ids maxvalue %(max)d start with %(start)d;
 
 
 -- PROPERTIES --
@@ -95,7 +81,7 @@ create index relationship_backward_idx on relationship (
 -- NODES --
 
 create table node (
-  guid bigint not null default nextval('guids'),
+  id bigint not null default nextval('node_ids'),
   flags smallint default 0 not null,
   time_removed timestamp default null,
   ctx smallint not null,
@@ -104,8 +90,8 @@ create table node (
   check (num is null or value is null)
 );
 
-create unique index node_guid on node (
-  guid
+create unique index node_id on node (
+  id
 ) where time_removed is null;
 
 create table edge (

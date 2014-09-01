@@ -7,21 +7,20 @@ from ..const import context, storage, table, util
 from ..db import query, txn
 
 
-__all__ = ['set', 'get', 'get_list', 'increment', 'add_flags', 'clear_flags',
-        'set_flags', 'remove']
+__all__ = ['set', 'get', 'get_list', 'increment', 'set_flags', 'remove']
 
 
 _missing = object()
 
 
 def set(pool, base_id, ctx, value, flags=None, timeout=None):
-    '''set a property value on a guid object
+    '''set a property value on a id object
 
     :param ConnectionPool pool:
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the parent object
+    :param int base_id: the id of the parent object
 
     :param int ctx: the property's context
 
@@ -67,7 +66,7 @@ def set(pool, base_id, ctx, value, flags=None, timeout=None):
 
     value = util.storage_wrap(ctx, value)
 
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+    with pool.get_by_id(base_id, timeout=timeout) as conn:
         inserted, updated = txn.set_property(conn, base_id, ctx, value, flags)
 
     if not (inserted or updated):
@@ -84,7 +83,7 @@ def get(pool, base_id, ctx, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the parent object
+    :param int base_id: the id of the parent object
 
     :param int ctx: the property's context
 
@@ -104,7 +103,7 @@ def get(pool, base_id, ctx, timeout=None):
     if util.ctx_tbl(ctx) != table.PROPERTY or util.ctx_storage(ctx) is None:
         raise error.BadContext(ctx)
 
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+    with pool.get_by_id(base_id, timeout=timeout) as conn:
         exists, value, flags = query.select_property(
                 conn.cursor(), base_id, ctx)
         if not exists:
@@ -124,7 +123,7 @@ def get_list(pool, base_id, ctx_list=None, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the parent object
+    :param int base_id: the id of the parent object
 
     :param ctx_list:
         the contexts of the properties to fetch. can be a list of context ints,
@@ -139,7 +138,7 @@ def get_list(pool, base_id, ctx_list=None, timeout=None):
         ``base_id``, ``ctx``, ``flags``, and ``value`` keys) or ``None``s,
         depending on whether the property exists for a given context.
     '''
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+    with pool.get_by_id(base_id, timeout=timeout) as conn:
         results = query.select_properties(conn.cursor(), base_id, ctx_list)
 
     for r in results:
@@ -156,7 +155,7 @@ def increment(pool, base_id, ctx, by=1, limit=None, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the parent object
+    :param int base_id: the id of the parent object
 
     :param int ctx: the property's context
 
@@ -186,79 +185,13 @@ def increment(pool, base_id, ctx, by=1, limit=None, timeout=None):
         raise error.StorageClassError(
             'cannot increment a ctx that is not configured for INT')
 
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+    with pool.get_by_id(base_id, timeout=timeout) as conn:
         if limit is None:
             return query.increment_property(
                     conn.cursor(), base_id, ctx, by)
         else:
             return query.increment_property(
                     conn.cursor(), base_id, ctx, by, limit)
-
-
-def add_flags(pool, base_id, ctx, flags, timeout=None):
-    '''apply flags to an existing property
-
-    :param ConnectionPool pool:
-        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
-        getting a database connection
-
-    :param int base_id: the guid of the parent object
-
-    :param int ctx: the property's context
-
-    :param iterable flags: the flags to add
-
-    :param timeout:
-        maximum time in seconds that the method is allowed to take; the default
-        of ``None`` means no limit
-
-    :returns:
-        the new set of flags, or None if there is no property for the given
-        ``base_id/ctx``
-
-    :raises ReadOnly: if given a read-only pool
-
-    :raises BadContext:
-        if the ``ctx`` is not a registered context for table.PROPERTY
-
-    :raises BadFlag:
-        if ``flags`` contains something that is not a registered flag
-        associated with ``ctx``
-    '''
-    return set_flags(pool, base_id, ctx, flags, [], timeout)
-
-
-def clear_flags(pool, base_id, ctx, flags, timeout=None):
-    '''remove flags from an existing property
-
-    :param ConnectionPool pool:
-        a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
-        getting a database connection
-
-    :param int base_id: the guid of the parent object
-
-    :param int ctx: the property's context
-
-    :param iterable flags: the flags to clear
-
-    :param timeout:
-        maximum time in seconds that the method is allowed to take; the default
-        of ``None`` means no limit
-
-    :returns:
-        the new set of flags, or None if there is no property for the given
-        ``base_id/ctx``
-
-    :raises ReadOnly: if given a read-only pool
-
-    :raises BadContext:
-        if the ``ctx`` is not a registered context for table.PROPERTY
-
-    :raises BadFlag:
-        if ``flags`` contains something that is not a registered flag
-        associated with ``ctx``
-    '''
-    return set_flags(pool, base_id, ctx, [], flags, timeout)
 
 
 def set_flags(pool, base_id, ctx, add, clear, timeout=None):
@@ -268,7 +201,7 @@ def set_flags(pool, base_id, ctx, add, clear, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the parent object
+    :param int base_id: the id of the parent object
 
     :param int ctx: the property's context
 
@@ -302,7 +235,7 @@ def set_flags(pool, base_id, ctx, add, clear, timeout=None):
     add = util.flags_to_int(ctx, add)
     clear = util.flags_to_int(ctx, clear)
 
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+    with pool.get_by_id(base_id, timeout=timeout) as conn:
         result = query.set_flags(
                 conn.cursor(), 'property', add, clear,
                 {'base_id': base_id, 'ctx': ctx})
@@ -320,7 +253,7 @@ def remove(pool, base_id, ctx, value=_missing, timeout=None):
         a :class:`ConnectionPool <datahog.dbconn.ConnectionPool>` to use for
         getting a database connection
 
-    :param int base_id: the guid of the parent object
+    :param int base_id: the id of the parent object
 
     :param int ctx: the property's context
 
@@ -339,7 +272,7 @@ def remove(pool, base_id, ctx, value=_missing, timeout=None):
     if pool.readonly:
         raise error.ReadOnly()
 
-    with pool.get_by_guid(base_id, timeout=timeout) as conn:
+    with pool.get_by_id(base_id, timeout=timeout) as conn:
         if value is _missing:
             return query.remove_property(conn.cursor(), base_id, ctx)
         else:
