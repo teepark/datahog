@@ -7,12 +7,15 @@ from setuptools import setup
 
 VERSION = (0, 0, 2, "")
 
+install_deps = ['psycopg2', 'mummy']
+test_deps = install_deps + ['greenhouse', 'fuzzy', 'nose']
 
 setup(
     name="datahog",
     description="a shardable postgresql-backed data store",
     packages=["datahog", "datahog.api", "datahog.const", "datahog.db"],
     version='.'.join(filter(None, map(str, VERSION))),
-    install_requires=['psycopg2', 'mummy'],
-    tests_require=install_requires+['greenhouse', 'fuzzy'],
+    install_requires=install_deps,
+    tests_require=test_deps,
+    test_suite='nose.collector',
 )
