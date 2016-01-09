@@ -399,7 +399,7 @@ returning num
         add_fetch_result([(7,)])
 
         self.assertEqual(
-                datahog.prop.add_flags(self.p, 123, 2, [1, 3]),
+                datahog.prop.set_flags(self.p, 123, 2, [1, 3], []),
                 set([1, 2, 3]))
 
         self.assertEqual(eventlog, [
@@ -420,7 +420,7 @@ returning flags
         add_fetch_result([])
 
         self.assertEqual(
-                datahog.prop.add_flags(self.p, 123, 2, [1, 3]),
+                datahog.prop.set_flags(self.p, 123, 2, [1, 3], []),
                 None)
 
     def test_clear_flags(self):
@@ -431,7 +431,7 @@ returning flags
         add_fetch_result([(4,)])
 
         self.assertEqual(
-                datahog.prop.clear_flags(self.p, 123, 2, [1, 2]),
+                datahog.prop.set_flags(self.p, 123, 2, [], [1, 2]),
                 set([3]))
 
         self.assertEqual(eventlog, [
@@ -452,7 +452,7 @@ returning flags
         add_fetch_result([])
 
         self.assertEqual(
-                datahog.prop.clear_flags(self.p, 123, 2, [1, 3]),
+                datahog.prop.set_flags(self.p, 123, 2, [], [1, 3]),
                 None)
 
     def test_set_flags_add(self):

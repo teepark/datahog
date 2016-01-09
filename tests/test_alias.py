@@ -339,7 +339,7 @@ where r=1
         add_fetch_result([(5,)])
 
         self.assertEqual(
-                datahog.alias.add_flags(self.p, 123, 2, 'value', [1, 3]),
+                datahog.alias.set_flags(self.p, 123, 2, 'value', [1, 3], []),
                 set([1, 3]))
 
         h = hmac.new(self.p.digestkey, 'value', hashlib.sha1).digest()
@@ -388,7 +388,7 @@ returning flags
         add_fetch_result([])
 
         self.assertEqual(
-                datahog.alias.add_flags(self.p, 123, 2, 'value', [1, 3]),
+                datahog.alias.set_flags(self.p, 123, 2, 'value', [1, 3], []),
                 None)
 
     def test_clear_flags(self):
@@ -401,7 +401,7 @@ returning flags
         add_fetch_result([(1,)])
 
         self.assertEqual(
-                datahog.alias.clear_flags(self.p, 123, 2, 'value', [2, 3]),
+                datahog.alias.set_flags(self.p, 123, 2, 'value', [], [2, 3]),
                 set([1]))
 
         h = hmac.new(self.p.digestkey, 'value', hashlib.sha1).digest()
@@ -450,7 +450,7 @@ returning flags
         add_fetch_result([])
 
         self.assertEqual(
-                datahog.alias.clear_flags(self.p, 123, 2, 'value', [1, 3]),
+                datahog.alias.set_flags(self.p, 123, 2, 'value', [], [1, 3]),
                 None)
 
     def test_set_flags_add(self):

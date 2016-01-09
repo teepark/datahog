@@ -392,7 +392,7 @@ limit %s
         add_fetch_result([(6,)])
 
         self.assertEqual(
-                datahog.name.add_flags(self.p, 123, 3, 'value', [2, 3]),
+                datahog.name.set_flags(self.p, 123, 3, 'value', [2, 3], []),
                 set([2, 3]))
 
         self.assertEqual(eventlog, [
@@ -442,7 +442,7 @@ returning flags
         dm, dmalt = _dm('value')
 
         self.assertEqual(
-                datahog.name.add_flags(self.p, 123, 2, 'value', [2, 3]),
+                datahog.name.set_flags(self.p, 123, 2, 'value', [2, 3], []),
                 set([2, 3]))
 
         self.assertEqual(eventlog, [
@@ -495,7 +495,7 @@ returning flags
         dm, dmalt = _dm('window')
 
         self.assertEqual(
-                datahog.name.add_flags(self.p, 123, 2, 'window', [2, 3]),
+                datahog.name.set_flags(self.p, 123, 2, 'window', [2, 3], []),
                 set([2, 3]))
 
         self.assertEqual(eventlog, [
@@ -568,7 +568,7 @@ returning flags
         add_fetch_result([])
 
         self.assertEqual(
-                datahog.name.add_flags(self.p, 123, 3, 'value', [2, 3]),
+                datahog.name.set_flags(self.p, 123, 3, 'value', [2, 3], []),
                 None)
 
     def test_clear_flags_prefix(self):
@@ -581,7 +581,7 @@ returning flags
         add_fetch_result([(1,)])
 
         self.assertEqual(
-                datahog.name.clear_flags(self.p, 123, 3, 'value', [2, 3]),
+                datahog.name.set_flags(self.p, 123, 3, 'value', [], [2, 3]),
                 set([1]))
 
         self.assertEqual(eventlog, [
@@ -631,7 +631,7 @@ returning flags
         dm, dmalt = _dm('value')
 
         self.assertEqual(
-                datahog.name.clear_flags(self.p, 123, 2, 'value', [2, 3]),
+                datahog.name.set_flags(self.p, 123, 2, 'value', [], [2, 3]),
                 set([1]))
 
         self.assertEqual(eventlog, [
@@ -684,7 +684,7 @@ returning flags
         dm, dmalt = _dm('window')
 
         self.assertEqual(
-                datahog.name.clear_flags(self.p, 123, 2, 'window', [2, 3]),
+                datahog.name.set_flags(self.p, 123, 2, 'window', [], [2, 3]),
                 set([1]))
 
         self.assertEqual(eventlog, [
@@ -757,7 +757,7 @@ returning flags
         add_fetch_result([])
 
         self.assertEqual(
-                datahog.name.clear_flags(self.p, 123, 3, 'value', [2, 3]),
+                datahog.name.set_flags(self.p, 123, 3, 'value', [], [2, 3]),
                 None)
 
     def test_set_flags_add(self):

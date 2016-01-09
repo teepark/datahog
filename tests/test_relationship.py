@@ -394,7 +394,7 @@ limit %s
         add_fetch_result([(5,)])
 
         self.assertEqual(
-                datahog.relationship.add_flags(self.p, 123, 456, 3, [1, 3]),
+                datahog.relationship.set_flags(self.p, 123, 456, 3, [1, 3], []),
                 set([1, 3]))
 
         self.assertEqual(eventlog, [
@@ -428,7 +428,7 @@ returning flags
         add_fetch_result([])
 
         self.assertEqual(
-                datahog.relationship.add_flags(self.p, 123, 456, 3, [1, 3]),
+                datahog.relationship.set_flags(self.p, 123, 456, 3, [1, 3], []),
                 None)
 
     def test_clear_flags(self):
@@ -440,7 +440,7 @@ returning flags
         add_fetch_result([(2,)])
 
         self.assertEqual(
-                datahog.relationship.clear_flags(self.p, 123, 456, 3, [1, 3]),
+                datahog.relationship.set_flags(self.p, 123, 456, 3, [], [1, 3]),
                 set([2]))
 
         self.assertEqual(eventlog, [
@@ -474,7 +474,7 @@ returning flags
         add_fetch_result([])
 
         self.assertEqual(
-                datahog.relationship.clear_flags(self.p, 123, 456, 3, [1, 3]),
+                datahog.relationship.set_flags(self.p, 123, 456, 3, [], [1, 3]),
                 None)
 
     def test_set_flags_add(self):
