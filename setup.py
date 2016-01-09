@@ -14,4 +14,5 @@ setup(
     packages=["datahog", "datahog.api", "datahog.const", "datahog.db"],
     version='.'.join(filter(None, map(str, VERSION))),
     install_requires=['psycopg2', 'mummy'],
+    tests_require=install_requires+['greenhouse', 'fuzzy'],
 )
